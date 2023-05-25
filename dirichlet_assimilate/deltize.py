@@ -1,7 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import List
-from .dirichlet import Sample, Ensemble
+from .shared_classes import Sample, Ensemble
 
 @dataclass
 class RawSample:
@@ -9,7 +9,8 @@ class RawSample:
     volume: np.ndarray
     snow: np.ndarray
     def __post_init__(self):
-        if not snow:
+        if not self.snow:
+            self.snow = np.zeros_like(self.area)
         if not len(self.area)==len(self.volume)==len(self.snow):
             raise ValueError('Area, Volume, and Snow vectors must have the same length.')
 
@@ -53,10 +54,3 @@ def post_process_ensemble(ensemble: Ensemble, h_bnd: HeightBounds) -> RawEnsembl
     for sample in ensemble.samples:
         raw_samples.append(post_process_sample(sample, h_bnd=h_bnd))
     return RawEnsemble(samples=raw_samples)
-
-
-
-
-#%%
-
-#%%

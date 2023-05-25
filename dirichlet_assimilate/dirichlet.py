@@ -1,66 +1,7 @@
 import numpy as np
 import scipy
-from dataclasses import dataclass
-from typing import List
+from .shared_classes import Sample, SampleClass, Ensemble, ClassEnsemble, UniformSample, UniformEnsemble, ClassDirichlet, MixedDirichlet
 
-class Sample(np.ndarray):
-    def __new__(cls, input_array):
-        return np.asarray(input_array).view(cls)
-    @property
-    def sample_class(self):
-        return SampleClass(self > 0)
-
-
-class UniformSample(np.ndarray):
-    def __new__(cls, input_array):
-        return np.asarray(input_array).view(cls)
-
-class SampleClass(np.ndarray):
-    def __new__(cls, input_array):
-        return np.asarray(input_array, dtype=bool).view(cls)
-
-@dataclass
-class Ensemble:
-    samples: List[Sample]
-    def __post_init__(self):
-        self.sample_classes = [SampleClass(c) for c in {tuple(s.sample_class) for s in self.samples}]
-        self.sample_classes = sorted(self.sample_classes, key = lambda x: list(x))
-        self.class_ensembles = [ClassEnsemble(samples=[s for s in self.samples if np.all(s.sample_class==c)]) for c in self.sample_classes]
-
-class ClassEnsemble(Ensemble):
-    def __post_init__(self):
-        self.sample_class = self.samples[0].sample_class
-
-@dataclass
-class ClassDirichlet:
-    alpha: np.ndarray
-    sample_class: SampleClass
-
-    @property
-    def full_alpha(self):
-        a = np.zeros_like(self.sample_class, dtype=float)
-        a[self.sample_class] = self.alpha
-        return a
-
-    @property
-    def mean_sample(self):
-        return Sample(self.full_alpha / self.full_alpha.sum())
-
-    def errorbars(self, a=0.1):
-        dists = scipy.stats.beta(self.alpha, self.alpha.sum()-self.alpha)
-        lower_error = dists.isf(1 - a)
-        upper_error = dists.isf(a)
-        y_error = np.array([lower_error, upper_error])
-        return y_error
-
-@dataclass
-class MixedDirichlet:
-    mixing_rates: np.ndarray
-    dirichlets: List[ClassDirichlet]
-
-@dataclass
-class UniformEnsemble:
-    samples: List[UniformSample]
 
 
 # DIRICHLET PARAMETER ESTIMATION
@@ -210,7 +151,7 @@ def update_xj(x_i, uniform, md):
     else:
         return 1-sum(x_i)
 
-def update_sample(uniform_sample: UniformSample, md: MixedDirichlet, observation: Observation) -> Sample:
+def update_sample(uniform_sample: UniformSample, md: MixedDirichlet, observation: float) -> Sample:
     x = []
     x0 = update_x0(uniform_sample[0], md, observation)
     x.append(x0)
@@ -218,7 +159,7 @@ def update_sample(uniform_sample: UniformSample, md: MixedDirichlet, observation
         x.append(update_xj(x, uniform_sample[j], md))
     return Sample(x)
 
-def update_ensemble(uniform_ensemble: UniformEnsemble, md: MixedDirichlet, observation: Observation) -> Ensemble:
+def update_ensemble(uniform_ensemble: UniformEnsemble, md: MixedDirichlet, observation: float) -> Ensemble:
     samples = []
     for uniform_sample in uniform_ensemble.samples:
         samples.append(update_sample(uniform_sample, md, observation))

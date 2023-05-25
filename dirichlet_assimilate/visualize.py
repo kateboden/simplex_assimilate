@@ -1,8 +1,7 @@
 import numpy as np
 import scipy
-from dataclasses import dataclass
-from typing import List
 from matplotlib import pyplot as plt
+from .shared_classes import Sample, Ensemble, ClassDirichlet, MixedDirichlet, ClassEnsemble
 
 class Visualisation:
 
