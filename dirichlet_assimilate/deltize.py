@@ -1,5 +1,4 @@
 import numpy as np
-import scipy
 from dataclasses import dataclass
 from typing import List
 from .dirichlet import Sample, Ensemble
@@ -24,11 +23,6 @@ class HeightBounds(np.ndarray):
     @property
     def intervals(self):
         return zip(self[:-1], self[1:])
-
-@dataclass
-class Observation:
-    n: int
-    r: int
 
 # PROCESS TO DELTIZED FORM
 def process_sample(raw_sample: RawSample, h_bnd: HeightBounds, threshold=1e-7) -> Sample:
