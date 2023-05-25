@@ -1,5 +1,5 @@
 
-## Modules
+## Project Structure
 
 - `dirichlet_assimilate/` - Source files for the python package.
 - `dirichlet_assimilate/deltize` - Convert vectors of area $\vec{a}$ and volume $\vec{v}$ into a single point on the simplex $\vec{x}$.
