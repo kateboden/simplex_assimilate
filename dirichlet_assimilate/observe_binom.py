@@ -1,11 +1,6 @@
 import scipy
 from dataclasses import dataclass
 
-@dataclass
-class Observation:
-    n: int
-    r: int
-
 # UPDATE ON OBSERVATION
 def update_x0(uniform, md: MixedDirichlet, observation: Observation):
     # N.B. Dirichlet is conjugate prior to multinomial observation, but not to binomial observation

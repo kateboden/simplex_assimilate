@@ -1,22 +1,29 @@
 import numpy as np
 import scipy
 from matplotlib import pyplot as plt
-from .shared_classes import Sample, Ensemble, ClassDirichlet, MixedDirichlet, ClassEnsemble
+from .shared_classes import Sample, Ensemble, ClassDirichlet, MixedDirichlet, ClassEnsemble, RawSample, RawEnsemble, Observation, HeightBounds
 
 class Visualisation:
 
-    def __init__(self, h_bnd, ax=None):
+    def __init__(self, h_bnd: HeightBounds, ax=None, log_scale=True):
         self.h_bnd = h_bnd
+        self.log_scale = log_scale
         if not ax:
             fig, ax = plt.subplots(figsize=(20,8))
         self.width = 0.25
         self.bottom=-15
-        ax.set_xlabel('Height')
-        ax.set_ylabel('Log mass')
         self.ax = ax
-        self.ax.set_ylim(self.bottom, 0)
+        ax.set_xlabel('Height')
         self.ax.set_xlim(-1, h_bnd[-1]+1)
         self.show_bounds()
+
+        if self.log_scale:
+            self.ax.set_ylabel('Log area')
+            self.ax.set_ylim(self.bottom, 0)
+        else:
+            # set regular scale
+            self.ax.set_ylim(0,1)
+            self.ax.set_ylabel('Area')
 
     def show_bounds(self):
         for bound in self.h_bnd:
@@ -75,14 +82,23 @@ class Visualisation:
         for ce in ensemble.class_ensembles:
             self.show_class_ensemble(ce)
 
+    def add_raw_sample(self, rs: RawSample):
+        x = [np.mean(interval) for interval in self.h_bnd.intervals]
+        x.insert(0, 0.)
+        top = np.insert(rs.area, 0, 1-sum(rs.area))
+        bars = self.ax.bar(x=x, height=top)
 
     def add_sample(self, sample, style='bar', color='b', show_labels=False, show_raw=False, dot_size=10):
         assert len(sample) == 2*len(self.h_bnd) - 1
 
         x_r = self.h_bnd[sample[::2] > 0]  - self.width/2
         x_l = self.h_bnd[:-1][sample[1::2]> 0] + self.width/2
-        top_r = np.log(sample[::2][sample[::2] > 0])
-        top_l = np.log(sample[1::2][sample[1::2] > 0])
+        top_r = sample[::2][sample[::2] > 0]
+        top_l = sample[1::2][sample[1::2] > 0]
+
+        if self.log_scale:
+            top_r, top_l = np.log(top_r), np.log(top_l)
+
         if style=='bar':
             bars_r = self.ax.bar(x=x_r, height=top_r-self.bottom, width=self.width, color=color, bottom=self.bottom)
             bars_l = self.ax.bar(x=x_l, height=top_l-self.bottom, width=self.width, color=color, bottom=self.bottom)
@@ -112,7 +128,7 @@ class Visualisation:
         if show_raw:
             for interval, l, r, in zip(self.h_bnd.intervals, sample[1::2], sample[2::2]):
                 x_pos = sum(interval) / 2
-                y_pos = self.bottom + 3
+                y_pos = self.bottom + 3 if self.log_scale else 0.3
                 a, v = l+r, interval[0]*l + interval[1]*r
                 self.ax.annotate(
                     f'a={pretty_float(a)}\nv={pretty_float(v)}',
@@ -123,5 +139,3 @@ class Visualisation:
                     xytext=(0,5),
                     bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.2')
                 )
-
-        self.ax.set_ylim(self.bottom, 0)

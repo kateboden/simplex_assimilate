@@ -3,28 +3,6 @@ from dataclasses import dataclass
 from typing import List
 from .shared_classes import Sample, Ensemble
 
-@dataclass
-class RawSample:
-    area: np.ndarray
-    volume: np.ndarray
-    snow: np.ndarray
-    def __post_init__(self):
-        if not self.snow:
-            self.snow = np.zeros_like(self.area)
-        if not len(self.area)==len(self.volume)==len(self.snow):
-            raise ValueError('Area, Volume, and Snow vectors must have the same length.')
-
-@dataclass
-class RawEnsemble:
-    samples: List[RawSample]
-
-class HeightBounds(np.ndarray):
-    def __new__(cls, input_array):
-        return np.asarray(input_array).view(cls)
-    @property
-    def intervals(self):
-        return zip(self[:-1], self[1:])
-
 # PROCESS TO DELTIZED FORM
 def process_sample(raw_sample: RawSample, h_bnd: HeightBounds, threshold=1e-7) -> Sample:
     x = []

@@ -60,3 +60,31 @@ class MixedDirichlet:
 @dataclass
 class UniformEnsemble:
     samples: List[UniformSample]
+
+@dataclass
+class RawSample:
+    area: np.ndarray
+    volume: np.ndarray
+    snow: np.ndarray
+    def __post_init__(self):
+        if not self.snow:
+            self.snow = np.zeros_like(self.area)
+        if not len(self.area)==len(self.volume)==len(self.snow):
+            raise ValueError('Area, Volume, and Snow vectors must have the same length.')
+
+@dataclass
+class RawEnsemble:
+    samples: List[RawSample]
+
+class HeightBounds(np.ndarray):
+    def __new__(cls, input_array):
+        return np.asarray(input_array).view(cls)
+    @property
+    def intervals(self):
+        return zip(self[:-1], self[1:])
+
+@dataclass
+class Observation:
+    n: int
+    r: int
+
