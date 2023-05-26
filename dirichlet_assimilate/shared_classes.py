@@ -65,9 +65,9 @@ class UniformEnsemble:
 class RawSample:
     area: np.ndarray
     volume: np.ndarray
-    snow: np.ndarray
+    snow: np.ndarray = None
     def __post_init__(self):
-        if not self.snow:
+        if self.snow is None:
             self.snow = np.zeros_like(self.area)
         if not len(self.area)==len(self.volume)==len(self.snow):
             raise ValueError('Area, Volume, and Snow vectors must have the same length.')

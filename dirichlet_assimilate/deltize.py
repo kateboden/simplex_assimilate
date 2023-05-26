@@ -1,7 +1,7 @@
 import numpy as np
 from dataclasses import dataclass
 from typing import List
-from .shared_classes import Sample, Ensemble
+from .shared_classes import Sample, Ensemble, RawSample, HeightBounds, RawEnsemble
 
 # PROCESS TO DELTIZED FORM
 def process_sample(raw_sample: RawSample, h_bnd: HeightBounds, threshold=1e-7) -> Sample:
