@@ -29,11 +29,13 @@ def fit_mixed_dirichlet(ensemble: Ensemble) -> MixedDirichlet:
     for i, ce in enumerate(ensemble.class_ensembles):
         if len(ce.samples)>1:
             dirichlets[i] = fit_dirichlet(ce)
-    max_alpha = max( [sum(d.alpha) for d in dirichlets if d is not None] )
+    max_s = max( [sum(d.alpha) for d in dirichlets if d is not None] )
     for i, ce in enumerate(ensemble.class_ensembles):
         if len(ce.samples)==1:
-            alpha = ce.samples[0][ce.sample_class]*max_alpha
+            alpha = ce.samples[0][ce.sample_class]*max_s
             dirichlets[i] = ClassDirichlet(alpha=alpha, sample_class=ce.sample_class)
+
     mixing_rates = np.array( [len(ce.samples)/len(ensemble.samples) for ce in ensemble.class_ensembles] )
+
     return MixedDirichlet(mixing_rates=mixing_rates, dirichlets=dirichlets)
 
