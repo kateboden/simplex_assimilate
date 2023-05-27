@@ -42,15 +42,8 @@ class ClassDirichlet:
         return a
 
     @property
-    def mean_sample(self):
+    def full_mean_sample(self):
         return Sample(self.full_alpha / self.full_alpha.sum())
-
-    def errorbars(self, a=0.1):
-        dists = scipy.stats.beta(self.alpha, self.alpha.sum()-self.alpha)
-        lower_error = dists.isf(1 - a)
-        upper_error = dists.isf(a)
-        y_error = np.array([lower_error, upper_error])
-        return y_error
 
 @dataclass
 class MixedDirichlet:

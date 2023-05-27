@@ -1,6 +1,8 @@
 import numpy as np
 import scipy
 from matplotlib import pyplot as plt
+import matplotlib.font_manager as fm
+
 from .shared_classes import Sample, Ensemble, ClassDirichlet, MixedDirichlet, ClassEnsemble, RawSample, RawEnsemble, Observation, HeightBounds
 
 class Visualisation:
@@ -16,6 +18,7 @@ class Visualisation:
         self.ax.set_xlim(-1, h_bnd[-1]+1)
         self.show_bounds()
         self.color_cycle = plt.rcParams['axes.prop_cycle'].by_key()['color'].__iter__()
+        self.offset_cycle = list(np.array([0., 1., -1., 2., -2., 3., -3., 0.5, -0.5, 1.5, -1.5, 2.5, -2.5,]) * 0.02).__iter__()
 
         if self.log_scale:
             self.ax.set_ylabel('Log area')
@@ -42,55 +45,58 @@ class Visualisation:
     def show_raw_sample(self, raw_sample: RawSample):
         self.add_raw_sample(raw_sample, style='bar', show_labels=True)
 
-    def show_raw_ensemble(self, raw_ensemble: RawEnsemble):
+    def show_raw_ensemble(self, raw_ensemble: RawEnsemble, params={}):
+        params = {'color': next(self.color_cycle), 's': 50, **params}
         for rs in raw_ensemble.samples:
-            self.add_raw_sample(rs, style='scatter', dot_size=50)
+            self.add_raw_sample(rs, style='scatter', params=params)
 
-    def show_class_dirichlet(self, cd: ClassDirichlet, color=None):
-        if not color:
-            color = next(self.color_cycle)
-        self.add_sample(cd.mean_sample, style='bar', show_labels=True, show_raw=True, color=color)
-        self.ax.set_title(f'$\\alpha = {cd.alpha.sum():.2f}$')
+    def show_class_dirichlet(self, cd: ClassDirichlet, params={}, confidence=0.95):
 
-    def show_dirichlet_bars(self, cd: ClassDirichlet, color=None, legend=None):
-        if not color:
-            color = next(self.color_cycle)
-        x_r = self.h_bnd[cd.full_alpha[::2] > 0]  - self.width/2
-        x_l = self.h_bnd[:-1][cd.full_alpha[1::2]> 0] + self.width/2
-        x = np.sort(np.concatenate((x_r, x_l)))
-        y_lims = np.maximum(np.log(cd.errorbars()), self.bottom)
-        u = cd.alpha / cd.alpha.sum()
-        y_error = np.maximum( (y_lims-np.log(u))*np.array([[-1.],[1.]]), 0)
-        # print(y_lims, np.log(u), y_error)
-        self.ax.errorbar(x=x, y=np.log(u), yerr=y_error, fmt='x', capsize=8, zorder=1, color=color, label=legend)
-        self.ax.legend()
-        self.ax.set_ylim(self.bottom, 0)
+        params = {'s': 100, 'marker': '_', 'color': next(self.color_cycle), **params}
 
-    def show_mixed_dirichlet(self, md: MixedDirichlet):
+        # error bounds
+        dists = scipy.stats.beta(cd.alpha, cd.alpha.sum()-cd.alpha)  # beta dists of marginal for each component
+        a = (1 - confidence)/2
+        lower_bound = dists.isf(1 - a)
+        upper_bound = dists.isf(a)
+        error_bounds = np.zeros((len(cd.full_mean_sample), 2))
+        error_bounds[cd.sample_class] = np.column_stack((lower_bound, upper_bound))
+
+        # draw sample
+        self.add_sample(cd.full_mean_sample, style='scatter', params=params, error_bounds=error_bounds)
+
+    def show_mixed_dirichlet(self, md: MixedDirichlet, confidence=0.95):
         for cd in md.dirichlets:
-            self.show_dirichlet_bars(cd)
+            self.show_class_dirichlet(cd, confidence=confidence)
 
-    def show_dirichlet_plus_samples(self, ce: ClassEnsemble, cd: ClassDirichlet, legend=None):
+    def show_dirichlet_plus_samples(self, ce: ClassEnsemble, cd: ClassDirichlet, confidence=0.9):
         color = next(self.color_cycle)
-        self.show_class_ensemble(ce, color)
-        self.show_dirichlet_bars(cd, color, legend=legend)
+        params = {'color': color}
+        self.show_class_ensemble(ce, params=params)
+        fms = [f'{f:.2f}'[2:] for f in cd.full_mean_sample]
+        label = f'$\\alpha$% = {"|".join(fms)}   $|\\alpha|$ = {cd.alpha.sum(): >5.1f}   $n$ = {len(ce.samples)}'
+        self.show_class_dirichlet(cd, params={**params, 'label': label}, confidence=confidence)
+        font_prop = fm.FontProperties(family='monospace')
+        self.ax.legend(prop=font_prop, loc='lower center', bbox_to_anchor=(0.5, 1.0))
 
-    def show_mixed_dirichlet_plus_samples(self, en: Ensemble, md: MixedDirichlet):
+    def show_mixed_dirichlet_plus_samples(self, en: Ensemble, md: MixedDirichlet, confidence=0.9):
         for ce, cd, mr in zip(en.class_ensembles, md.dirichlets, md.mixing_rates):
-            legend = f'$n = {len(ce.samples)}, \\pi = {mr:.2f}$'
-            self.show_dirichlet_plus_samples(ce, cd, legend=legend)
+            self.show_dirichlet_plus_samples(ce, cd, confidence=confidence)
 
-    def show_class_ensemble(self, ce: ClassEnsemble, color=None):
-        if not color:
-            color = next(self.color_cycle)
+    def show_class_ensemble(self, ce: ClassEnsemble, params={}):
+
+        params = {'color': next(self.color_cycle), 's': 50, **params}
+
         for sample in ce.samples:
-            self.add_sample(sample, style='scatter', color=color, dot_size=50)
+            self.add_sample(sample, style='scatter', params=params)
 
     def show_ensemble(self, ensemble: Ensemble):
         for ce in ensemble.class_ensembles:
             self.show_class_ensemble(ce)
 
-    def add_raw_sample(self, rs: RawSample, style='bar', show_labels=False, color='b', dot_size=10):
+    def add_raw_sample(self, rs: RawSample, style='bar', show_labels=False, params=None):
+        if params is None:
+            params = {}
         x = [np.mean(interval) for interval in self.h_bnd.intervals]
         x.insert(0, 0.)
         top = np.insert(rs.area, 0, 1-sum(rs.area))
@@ -99,36 +105,40 @@ class Visualisation:
 
 
         if style=='bar':
-            bars = self.ax.bar(x=x, height=top-self.bottom, width=self.width, color=color, bottom=self.bottom)
+            bars = self.ax.bar(x=x, height=top-self.bottom, width=self.width, bottom=self.bottom, **params)
+            if show_labels:
+                for bar, t in zip(bars, top):
+                    self.ax.text(bar.get_x() + bar.get_width() / 2, self.bottom + bar.get_height(), self.pretty_float(t), ha='center', va='bottom')
         elif style=='scatter':
-            self.ax.scatter(x=x, y=top, color=color, s=dot_size)
+            self.ax.scatter(x=x, y=top, **params)
         else:
             raise ValueError(f'Invalid style={style}, must be bar or scatter')
 
-        if show_labels:
-            assert style=='bar', 'labels can only be shown on bar charts. Try show_labels=False or style="bar"'
-            for bar, t in zip(bars, top):
-                # height = bar.get_height()
-                self.ax.text(bar.get_x() + bar.get_width() / 2, self.bottom + bar.get_height(), self.pretty_float(t), ha='center', va='bottom')
 
-    def add_sample(self, sample, style='bar', color='b', show_labels=False, show_raw=False, dot_size=10):
+    def add_sample(self, sample, style='bar', show_labels=False, show_raw=False, error_bounds=None, params=None):
+        if params is None:
+            params = {}
+
         assert len(sample) == 2*len(self.h_bnd) - 1
 
         x_r = self.h_bnd[sample[::2] > 0]  - self.width/2
         x_l = self.h_bnd[:-1][sample[1::2]> 0] + self.width/2
+        x = [x for pair in zip(x_r[:-1], x_l) for x in pair] + [x_r[-1]]
+        if error_bounds is not None:
+            x += next(self.offset_cycle)
+
         top_r = sample[::2][sample[::2] > 0]
         top_l = sample[1::2][sample[1::2] > 0]
+        top = [t for pair in zip(top_r[:-1], top_l) for t in pair] + [top_r[-1]]
+        top = np.array(top)
 
         if self.log_scale:
-            top_r, top_l = np.log(top_r), np.log(top_l)
+            top = np.log(top)
 
         if style=='bar':
-            bars_r = self.ax.bar(x=x_r, height=top_r-self.bottom, width=self.width, color=color, bottom=self.bottom)
-            bars_l = self.ax.bar(x=x_l, height=top_l-self.bottom, width=self.width, color=color, bottom=self.bottom)
-            bars = [b for pair in zip(bars_r[:-1], bars_l) for b in pair] + [bars_r[-1],]
+            bars = self.ax.bar(x=x, height=top-self.bottom, width=self.width, bottom=self.bottom, **params)
         elif style=='scatter':
-            self.ax.scatter(x=x_r, y=top_r, color=color, s=dot_size)
-            self.ax.scatter(x=x_l, y=top_l, color=color, s=dot_size )
+            self.ax.scatter(x=x, y=top, **params)
         else:
             raise ValueError(f'Invalid style={style}, must be bar or scatter')
 
@@ -154,3 +164,11 @@ class Visualisation:
                     xytext=(0,5),
                     bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.2')
                 )
+
+        if error_bounds is not None:
+            assert len(sample)==len(error_bounds),\
+                f'length of error_bounds {len(error_bounds)} does not match length of sample f{len(sample)}'
+            for x_pos, (low, high) in zip(x, error_bounds):
+                if self.log_scale:
+                    low, high = np.log(low), np.log(high)
+                self.ax.vlines(x=x_pos, ymin=low, ymax=high, colors=(params.get('color', 'blue')))

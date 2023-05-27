@@ -30,3 +30,11 @@ ensemble = shared_classes.Ensemble(samples=[shared_classes.Sample([0.05 , 0.12 ,
                                             shared_classes.Sample([0.3  , 0.15 , 0.15 , 0.3  , 0.1  , 0.   , 0.   ]),
                                             ])
 sample = ensemble.samples[0]
+
+# Dirichlet distributions
+class_dirichlet   = shared_classes.ClassDirichlet(alpha=np.array([1.5, 2.9, 2.8123, 7., 6.2, 1.5, 1.5]), sample_class=shared_classes.SampleClass([1, 1, 1, 1, 1, 1, 1]))
+class_dirichlet_2 = shared_classes.ClassDirichlet(alpha=np.array([2, 1, 1, 3, 2]), sample_class=shared_classes.SampleClass([1, 1, 1, 1, 1, 0, 0]))
+mixed_dirichlet   = shared_classes.MixedDirichlet(mixing_rates=np.array([0.75, 0.25]), dirichlets=[class_dirichlet_2, class_dirichlet])
+
+
+
