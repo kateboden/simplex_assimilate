@@ -7,7 +7,7 @@ from .shared_classes import Sample, Ensemble, ClassDirichlet, MixedDirichlet, Cl
 
 class Visualisation:
 
-    def __init__(self, h_bnd: HeightBounds, ax=None, log_scale=True, figsize=(20,8)):
+    def __init__(self, h_bnd: HeightBounds, ax=None, log_scale=True, figsize=(20,8), bottom=-15):
         self.h_bnd = h_bnd
         self.log_scale = log_scale
         if not ax:
@@ -22,7 +22,7 @@ class Visualisation:
 
         if self.log_scale:
             self.ax.set_ylabel('Log area')
-            self.bottom = -15
+            self.bottom = bottom
             self.ax.set_ylim(self.bottom, 0)
         else:
             # set regular scale
@@ -50,7 +50,7 @@ class Visualisation:
         for rs in raw_ensemble.samples:
             self.add_raw_sample(rs, style='scatter', params=params)
 
-    def show_class_dirichlet(self, cd: ClassDirichlet, params={}, confidence=0.95):
+    def show_class_dirichlet(self, cd: ClassDirichlet, params={}, confidence=0.95, pi=None):
 
         params = {'s': 100, 'marker': '_', 'color': next(self.color_cycle), **params}
 
@@ -62,26 +62,33 @@ class Visualisation:
         error_bounds = np.zeros((len(cd.full_mean_sample), 2))
         error_bounds[cd.sample_class] = np.column_stack((lower_bound, upper_bound))
 
+        # label (show alpha)
+        fms = [f'{f:.2f}'[2:] for f in cd.full_mean_sample]
+        label = f'$\\alpha$% = {"|".join(fms)}   $|\\alpha|$ = {cd.alpha.sum(): >5.1f}'
+        if pi:  # indicate the number of ensemble members in the dirichlet distribution
+            label += f'     $\\pi$ = {int(pi*100): <2}%'
+        params['label'] = label
+
         # draw sample
         self.add_sample(cd.full_mean_sample, style='scatter', params=params, error_bounds=error_bounds)
 
-    def show_mixed_dirichlet(self, md: MixedDirichlet, confidence=0.95):
-        for cd in md.dirichlets:
-            self.show_class_dirichlet(cd, confidence=confidence)
-
-    def show_dirichlet_plus_samples(self, ce: ClassEnsemble, cd: ClassDirichlet, confidence=0.9):
-        color = next(self.color_cycle)
-        params = {'color': color}
-        self.show_class_ensemble(ce, params=params)
-        fms = [f'{f:.2f}'[2:] for f in cd.full_mean_sample]
-        label = f'$\\alpha$% = {"|".join(fms)}   $|\\alpha|$ = {cd.alpha.sum(): >5.1f}   $n$ = {len(ce.samples)}'
-        self.show_class_dirichlet(cd, params={**params, 'label': label}, confidence=confidence)
+        # draw legend above graph
         font_prop = fm.FontProperties(family='monospace')
         self.ax.legend(prop=font_prop, loc='lower center', bbox_to_anchor=(0.5, 1.0))
 
+    def show_mixed_dirichlet(self, md: MixedDirichlet, confidence=0.95):
+        for cd, mr in zip(md.dirichlets, md.mixing_rates):
+            self.show_class_dirichlet(cd, confidence=confidence, pi=mr)
+
+    def show_dirichlet_plus_samples(self, ce: ClassEnsemble, cd: ClassDirichlet, params={}, confidence=0.9, pi=None):
+        params = {'color': next(self.color_cycle), **params}
+        self.show_class_ensemble(ce, params=params)
+        self.show_class_dirichlet(cd, params=params, confidence=confidence, pi=pi)
+
+
     def show_mixed_dirichlet_plus_samples(self, en: Ensemble, md: MixedDirichlet, confidence=0.9):
         for ce, cd, mr in zip(en.class_ensembles, md.dirichlets, md.mixing_rates):
-            self.show_dirichlet_plus_samples(ce, cd, confidence=confidence)
+            self.show_dirichlet_plus_samples(ce, cd, confidence=confidence, pi=mr)
 
     def show_class_ensemble(self, ce: ClassEnsemble, params={}):
 
@@ -121,16 +128,14 @@ class Visualisation:
 
         assert len(sample) == 2*len(self.h_bnd) - 1
 
-        x_r = self.h_bnd[sample[::2] > 0]  - self.width/2
-        x_l = self.h_bnd[:-1][sample[1::2]> 0] + self.width/2
-        x = [x for pair in zip(x_r[:-1], x_l) for x in pair] + [x_r[-1]]
+        x_r = self.h_bnd      - self.width/2
+        x_l = self.h_bnd[:-1] + self.width/2
+        x = np.array([x for pair in zip(x_r[:-1], x_l) for x in pair] + [x_r[-1]])
+        x = x[sample > 0]
         if error_bounds is not None:
             x += next(self.offset_cycle)
 
-        top_r = sample[::2][sample[::2] > 0]
-        top_l = sample[1::2][sample[1::2] > 0]
-        top = [t for pair in zip(top_r[:-1], top_l) for t in pair] + [top_r[-1]]
-        top = np.array(top)
+        top = sample[sample > 0]
 
         if self.log_scale:
             top = np.log(top)

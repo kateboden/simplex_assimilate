@@ -2,6 +2,9 @@ from dataclasses import dataclass
 import numpy as np
 from typing import List
 
+import scipy.stats
+
+
 class Sample(np.ndarray):
     def __new__(cls, input_array):
         return np.asarray(input_array).view(cls)
@@ -35,6 +38,11 @@ class ClassDirichlet:
     alpha: np.ndarray
     sample_class: SampleClass
 
+    def __post_init__(self):
+        assert np.any(self.sample_class), f'Sample class must have at least one true component.'
+        assert len(self.alpha) == np.count_nonzero(self.sample_class),\
+            f'alpha ({self.alpha}) does not match number of true components in sample class ({self.sample_class}).'
+
     @property
     def full_alpha(self):
         a = np.zeros_like(self.sample_class, dtype=float)
@@ -45,10 +53,41 @@ class ClassDirichlet:
     def full_mean_sample(self):
         return Sample(self.full_alpha / self.full_alpha.sum())
 
+    def to_beta(self):
+        # If we are only interested the first component, we might want to simplify the dirichlet to a beta
+        alpha = self.alpha[0], self.alpha[1:].sum()
+        sample_class = np.array([self.sample_class[0], np.any(self.sample_class[1:])])
+        return ClassDirichlet(alpha=alpha, sample_class=sample_class)
+
+    @staticmethod
+    def unif():
+        return scipy.stats.uniform(0, 1).rvs()
+
+    def marg_cdf(self, x0) -> float:
+        # marginal cdf of the first component
+
+        # if x0 is a zero component then the cdf is
+        #    1 if x is positive
+        #    0 if x is negative
+        #    ? if x is 0 (we map to a uniform random variable)
+        if not self.sample_class[0]:
+            return 1 if x0>0 else self.unif()
+        # if all the remaining components are zero then the cdf is
+        #    0 if x is less than 1
+        #    ? if x = 1 (we map to a uniform random var)
+        #    1 if x > 1
+        elif self.sample_class[0] and not np.any(self.sample_class[1:]):
+            return 0 if not np.isclose(x0, 1.) else self.unif()
+        else:
+            return scipy.stats.beta(self.alpha[0], self.alpha[1:].sum()).cdf(x0)
+
 @dataclass
 class MixedDirichlet:
     mixing_rates: np.ndarray
     dirichlets: List[ClassDirichlet]
+
+    def marg_cdf(self, x0) -> float:
+        return np.array([cd.marg_cdf(x0) for cd in self.dirichlets]) @ self.mixing_rates
 
 @dataclass
 class UniformEnsemble:
