@@ -10,10 +10,13 @@ packages = [{include = "dirichlet_assimilate"}]
 python = ">=3.11,<3.12"
 numpy = "^1.24.3"
 scipy = "^1.10.1"
+
+[tool.poetry.group.dev.dependencies]
+hypothesis = "^6.75.6"
 matplotlib = "^3.7.1"
 fire = "^0.5.0"
 jupyter = "^1.0.0"
-
+pytest = "^7.3.1"
 
 [build-system]
 requires = ["poetry-core"]
