@@ -9,12 +9,18 @@ def fit_dirichlet(class_ensemble: ClassEnsemble, max_alpha=1e4) -> ClassDirichle
     samples = samples[:, class_ensemble.sample_class]  # extract nonzero components
     assert np.all(samples > 0)
     log_avg = np.log(samples).mean(axis=0)
-
+    geo_mean = np.exp(log_avg)
+    mean = geo_mean / geo_mean.sum()  # normalized geometric mean
     # if all the samples are in a tight envelope our MLE for alpha will diverge.
     # use max_alpha instead with the geometric mean of the samples
     if np.allclose(samples.min(axis=0), samples.max(axis=0)):
-        alpha = np.exp(log_avg)  # use the geometric mean
-        alpha *= max_alpha / alpha.sum(axis=0)
+        s = max_alpha
+    else:
+        # use the alpha of the closed form MLE using Stirling's approximation
+        K = sum(class_ensemble.sample_class)
+        s = ((K-1)/2) / (np.inner(mean, np.log(mean) - log_avg))
+    alpha = s * mean
+    '''
     else:
         gammaln, digamma, polygamma = scipy.special.gammaln, scipy.special.digamma, scipy.special.polygamma
         f = lambda alpha: gammaln(alpha.sum()) - gammaln(alpha).sum() + (log_avg * (alpha - 1)).sum()  # likelihood
@@ -27,6 +33,7 @@ def fit_dirichlet(class_ensemble: ClassEnsemble, max_alpha=1e4) -> ClassDirichle
             invH = np.linalg.inv(hessian)
             da = - np.dot(invH, grad)
             alphas.append(alpha + da)
+    '''
     return ClassDirichlet(alpha=alpha, sample_class=class_ensemble.sample_class)
 
 

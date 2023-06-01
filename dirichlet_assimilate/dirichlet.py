@@ -19,6 +19,7 @@ def class_likelihood(x_i, cd: ClassDirichlet) -> float:
         ret = scipy.stats.dirichlet(alpha=cd.alpha).pdf(pos_x_i[:-1])
         # print(ret, cd.alpha, pos_x_i)
         return ret
+
     else:
         x = np.append(pos_x_i, 1-sum(x_i))
         a = np.append(alpha_i, sum(alpha_k))

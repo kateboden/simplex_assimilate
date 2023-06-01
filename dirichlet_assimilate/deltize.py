@@ -32,3 +32,4 @@ def post_process_ensemble(ensemble: Ensemble, h_bnd: HeightBounds) -> RawEnsembl
     for sample in ensemble.samples:
         raw_samples.append(post_process_sample(sample, h_bnd=h_bnd))
     return RawEnsemble(samples=raw_samples)
+

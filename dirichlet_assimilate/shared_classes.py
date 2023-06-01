@@ -40,6 +40,7 @@ class UniformSample(np.ndarray):
 class ClassDirichlet:
     alpha: np.ndarray
     sample_class: SampleClass
+    scale: float = 1.0
 
     def __post_init__(self):
         assert np.any(self.sample_class), f'Sample class must have at least one true component.'
@@ -69,28 +70,92 @@ class ClassDirichlet:
     def marg_cdf(self, x0) -> float:
         # marginal cdf of the first component
 
-        # if x0 is a zero component then the cdf is
+        # if the scale=0 i.e. there is no more remaining space, then the distribution is a delta at 0
+        if np.isclose(self.scale, 0):
+            if np.isclose(x0, 0):
+                return self.unif()
+            elif x0 < 0:
+                return 0
+            elif x0 > 0:
+                return 1
+        y0 = x0 / self.scale  # scale x0 -> y0 in the range [0, 1]
+
+
+        # if y0 should a zero component then the dist is a delta at zero
         #    1 if x is positive
         #    0 if x is negative
         #    ? if x is 0 (we map to a uniform random variable)
         if not self.sample_class[0]:
-            return 1 if x0>0 else self.unif()
-        # if all the remaining components are zero then the cdf is
+            return self.unif() if np.isclose(y0) else 0 if y0<0 else 1
+        # if all the remaining components should be zero then the cdf is
         #    0 if x is less than 1
         #    ? if x = 1 (we map to a uniform random var)
         #    1 if x > 1
-        elif self.sample_class[0] and not np.any(self.sample_class[1:]):
-            return 0 if not np.isclose(x0, 1.) else self.unif()
+        elif not np.any(self.sample_class[1:]):
+            return self.unif() if np.isclose(y0, 1.) else 0 if y0 < 1 else 1
         else:
-            return scipy.stats.beta(self.alpha[0], self.alpha[1:].sum()).cdf(x0)
+            return self.marginal_beta_scaled.cdf(y0)
+
+    def marg_pdf(self, x0):
+        y0 = x0 / self.scale
+        return self.marginal_beta_scaled.pdf(y0)
+
+    @property
+    def marginal_beta_scaled(self):
+        ''' marginal distribution of y0=x0/scale. the function marg_cdf handles edge cases '''
+        return scipy.stats.beta(self.alpha[0], self.alpha[1:].sum())
+
+    def conditional_dist(self, x0):
+        '''Return the conditional class dirichlet distribution conditioned on x0'''
+        assert len(self.alpha) > 1, 'Cannot condition a one-dimensional dirichlet distribution'
+        return ClassDirichlet(alpha=self.alpha[1:], sample_class=self.sample_class, scale=(self.scale - x0))
+
+    def check_valid(self):
+        assert np.all(self.alpha > 0), f'alpha_i must be strictly positive, {self.alpha}'
+
 
 @dataclass
 class MixedDirichlet:
     mixing_rates: np.ndarray
     dirichlets: List[ClassDirichlet]
+    scale: float = 1.0
+
+    @property
+    def alpha_matrix(self):
+        return np.array([cd.full_alpha for cd in self.dirichlets])
+
+    @property
+    def class_matrix(self):
+        return np.array([cd.sample_class for cd in self.dirichlets])
 
     def marg_cdf(self, x0) -> float:
         return np.array([cd.marg_cdf(x0) for cd in self.dirichlets]) @ self.mixing_rates
+
+    def inverse_marg_cdf(self, x0) -> float:
+        pass
+
+    def conditional_likelihoods(self, x0):
+        if np.isclose(x0, 0):
+            return self.class_matrix[:, 0] == 0
+        elif np.isclose(x0, self.scale):
+            return (self.class_matrix[:, 0] > 0) & np.any(self.class_matrix[:,1:], axis=1)
+        else:
+            return np.array([cd.marg_pdf(x0) if cd.sample_class[0] else 0 for cd in self.dirichlets])
+
+    def conditional_dist(self, x0):
+        new_mixing_rates = self.mixing_rates @ self.conditional_likelihoods(x0)
+        new_dirichlets = [cd.conditional_dist(x0) for cd in self.dirichlets]
+        return MixedDirichlet(mixing_rates=new_mixing_rates, dirichlets=new_dirichlets)
+
+    def check_valid(self):
+        for cd in self.dirichlets:
+            cd.check_valid()
+        assert np.all(self.mixing_rates > 0), f'Mixing rates must be greater than 0, {self.mixing_rates}'
+        assert np.isclose(self.mixing_rates.sum(), 1.0), f'Mixing rates must sum to one'
+        assert 0 <= self.scale <= 1.0, 'Scale must be between zero and one'
+
+
+
 
 @dataclass
 class UniformEnsemble:
@@ -115,6 +180,10 @@ class RawSample:
             self.volume[self.volume < v] = 0.
         if s:
             self.snow[self.snow < s]     = 0.
+
+    def scale_sample_snow(self, before: RawSample, after: RawSample):
+        after.snow[np.isclose(after.area, 0)] = 0
+        after.snow[~np.isclose(after.area, 0)] = before.snow * (after.area / before.area)
 
 @dataclass
 class RawEnsemble:

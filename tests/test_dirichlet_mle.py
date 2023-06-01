@@ -12,6 +12,8 @@ def test_fit_dirichlet(class_ensemble):
     assume(len(class_ensemble.samples) > 1)
     cd = dirichlet_mle.fit_dirichlet(class_ensemble)  # class dirichlet estimate
     # assert 0 < cd.alpha.sum()  # alpha can be all negative
+    # assert np.all(cd.alpha >= 0)
+    cd.check_valid()
 
 @settings(max_examples=20)
 @given(custom_strategies.ensemble_strategy())
