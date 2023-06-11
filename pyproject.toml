@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "dirichlet-assimilate"
+name = "simplex-assimilate"
 version = "0.1.0"
 description = "Perform Data Assimilation on the Simplex. Models an ensemble as a mixture of Dirichlet distributions."
 authors = ["Oscar Laird <olaird25@gmail.com>"]
 readme = "README.md"
-packages = [{include = "dirichlet_assimilate"}]
+packages = [{include = "simplex_assimilate"}]
 
 [tool.poetry.dependencies]
 python = ">=3.11,<3.12"
@@ -17,6 +17,7 @@ matplotlib = "^3.7.1"
 fire = "^0.5.0"
 jupyter = "^1.0.0"
 pytest = "^7.3.1"
+pytest-cov = "^4.1.0"
 
 [build-system]
 requires = ["poetry-core"]
