@@ -36,18 +36,6 @@ def test_quantize_warns_when_nonzero_is_truncated_to_zero():
     with pytest.warns(UserWarning):
         sa.quantize(np.array([[1e-32, 1-1e-32, 0]]))
 
-def test_check_pre_samples_asserts_pre_class_has_one_more_component_than_pre_samples():
-    with pytest.raises(AssertionError):
-        sa.check_pre_samples(np.array([[0, 3, 7],
-                                       [0, 3, 5]]), [False, False, False])
-
-
-def test_check_pre_samples_returns_true_when_pre_samples_are_correct():
-    assert sa.check_pre_samples(np.array([[0, 3, 7], [0, 3, 5]]).astype(np.uint32), [False,True, True, True])
-    assert sa.check_pre_samples(np.array([[0, sa.ONE, ], [0, sa.ONE,]]).astype(np.uint32), [False, True, False, ])
-    assert not sa.check_pre_samples(np.array([[0, sa.ONE, ], [0, sa.ONE,]]).astype(np.uint32), [False, True, True, ])
-    assert not sa.check_pre_samples(np.array([[1, sa.ONE, ], [0, sa.ONE,]]).astype(np.uint32), [False, True, True, ])
-
 def test_mixed_dirichlet_instantiation_warns_when_mixture_component_classes_are_not_unique():
     with pytest.warns(UserWarning):
         sa.dirichlet.MixedDirichlet(np.array([[1, 3, 5],
@@ -71,27 +59,23 @@ def test_cdf_asserts_at_least_one_mixture_class_consistent_w_pre_class(mixed_dir
     with pytest.raises(AssertionError):
         sa.cdf(x_j=np.array([[0.5]]),
                prior=mixed_dirichlet,
-               pre_class=np.array([False, True]),  # no mixture class is consistent with pre_class
                pre_samples=np.array([[0]]))
 
 def test_cdf_asserts_pre_samples_and_x_j_have_dtype_uint32(mixed_dirichlet):
     with pytest.raises(AssertionError):
         sa.cdf(x_j=np.array([[0.5]]),  # wrong dtype
                prior=mixed_dirichlet,
-               pre_class=np.array([True]),
                pre_samples=np.array([[np.uint32(1)]]))
     with pytest.raises(AssertionError):
         sa.cdf(x_j=np.array([[np.uint32(1)]]),
                prior=mixed_dirichlet,
-               pre_class=np.array([True]),
                pre_samples=np.array([[0.5]])) # wrong dtype
 
 def test_cdf_correct_1(mixed_dirichlet):
     # if we observe small x_0 this favors the first mixture component
     # which means the probability that x_1 is zero is now less than half
-    assert np.allclose(sa.cdf(x_j=(np.array([[0]])*sa.ONE).astype(np.uint32),
+    assert np.allclose(sa.cdf(x_j=(np.array([0])*sa.ONE).astype(np.uint32),
                               prior=mixed_dirichlet,
-                              pre_class=np.array([True, True]),
                               pre_samples=(np.array([[0.1]])*sa.ONE).astype(np.uint32),
                             ),
                        np.array([[0.357]]), atol=1e-3)
@@ -101,24 +85,21 @@ def test_cdf_correct_2(mixed_dirichlet):
     # must be a delta function at 1-x_0
     open_water = round(0.4*sa.ONE)
     upper = sa.ONE - open_water
-    assert np.allclose(sa.cdf(x_j=(np.array([[upper - sa.DELTA]])).astype(np.uint32),
+    assert np.allclose(sa.cdf(x_j=(np.array([upper - sa.DELTA])).astype(np.uint32),
                                 prior=mixed_dirichlet,
-                                pre_class=np.array([True, False, True]),
                                 pre_samples=np.array([[open_water, 0]]).astype(np.uint32),
                             ),
                           np.array([[0.]]), atol=1e-30)
-    assert np.allclose(sa.cdf(x_j=(np.array([[upper]])).astype(np.uint32),
+    assert np.allclose(sa.cdf(x_j=(np.array([upper])).astype(np.uint32),
                                 prior=mixed_dirichlet,
-                                pre_class=np.array([True, False, True]),
                                 pre_samples=np.array([[open_water, 0]]).astype(np.uint32),
                             ),
                             np.array([[1.]]), atol=1e-30)
 
 def test_cdf_correct_3():
     # demonstrate a component compelled to be zero
-    assert np.allclose(sa.cdf(x_j=(np.array([[0]])).astype(np.uint32),
+    assert np.allclose(sa.cdf(x_j=(np.array([0])).astype(np.uint32),
                                 prior=sa.dirichlet.MixedDirichlet(np.array([[4, 0, 5],]), mixture_weights=[1.]),
-                                pre_class=np.array([True, True]),
                                 pre_samples=(np.array([[0.1]])*sa.ONE).astype(np.uint32),
                             ),
                             np.array([[1.]]), atol=1e-30)
@@ -129,16 +110,14 @@ def test_invert_cdf_checks_uniforms_len_equals_pre_samples_len():
         sa.inv_cdf(uniforms=np.array([[0.5],
                                       [0.5]]),
                       prior=sa.dirichlet.MixedDirichlet(np.array([[4, 0, 5],]), mixture_weights=[1.]),
-                      pre_class=np.array([True, True]),
                       pre_samples=(np.array([[0.1]])*sa.ONE).astype(np.uint32),
         )
 
 def test_inv_cdf_correct_1(mixed_dirichlet):
     # the inverse of u_0=0.5 should be somewhere between the means of the two mixture components
     # in the first components which are 1/3 and 1/2
-    assert np.allclose(sa.inv_cdf(uniforms=np.array([0.5]),
+    assert np.allclose((sa.inv_cdf(uniforms=np.array([0.5, ]),
                                     prior=mixed_dirichlet,
-                                    pre_class=np.array([True, True]),
-                                    pre_samples=(np.array([[0.1]])*sa.ONE).astype(np.uint32),
-                                ),
-                            np.array([[0.416]]), atol=1e-3)
+                                    pre_samples=(np.array([[0.5],])*sa.ONE).astype(np.uint32),
+                                )/sa.ONE).astype(np.float64),
+                            np.array([[0.200]]), atol=1e-3)
