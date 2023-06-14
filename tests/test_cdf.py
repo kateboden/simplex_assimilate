@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from simplex_assimilate.quantize import quantize, ONE
-from simplex_assimilate.cdf_transport import vector_binary_search, likelihood, vectorized_likelihood, \
+from simplex_assimilate.cdf import vector_binary_search, likelihood, vectorized_likelihood, \
     cdf, inv_cdf, uniformize, deuniformize
 from simplex_assimilate.dirichlet import MixedDirichlet
 

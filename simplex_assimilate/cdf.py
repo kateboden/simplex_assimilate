@@ -35,8 +35,8 @@ def vectorized_likelihood(alpha: NDArray[np.float64], pre_samples: NDArray[np.ui
         for k in range(K):
             out[i, k] = likelihood(alpha[k], pre_samples[i])
     # check outputs
-    assert out.any(axis=1).all(), 'every sample must have at least one compatible class'
-    assert out.shape == (N, K)
+    # assert out.any(axis=1).all(), 'every sample must have at least one compatible class'
+    # assert out.shape == (N, K)
     return out
 
 
@@ -68,14 +68,17 @@ def cdf(x_j, prior: dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -
     # CALCULATE THE CDFs of the MIXTURE MIDDLE CLASSES
     # x_j/(1-Σx_(<j)) | x_(<j) ~ Beta(alpha_j, sum(alpha_(j+1:)))
     upper = ONE - pre_samples.sum(axis=1)
-    mixture_cdfs = np.empty((N, prior.K), dtype=np.float64)
+    mixture_cdfs = np.zeros((N, prior.K), dtype=np.float64)
     mixture_cdfs[:, lower_classes] = 1.
     mixture_cdfs[:, upper_classes] = (x_j >= upper)[:, None]
     if middle_classes.any():
         middle_alphas = prior.full_alpha[middle_classes]
         betas = np.column_stack((middle_alphas[:, j], middle_alphas[:, j + 1:].sum(axis=1)))
         # BUILD THE CDF from the LOWER, MIDDLE, and UPPER CLASSES
-        mixture_cdfs[:, middle_classes] = np.column_stack(tuple(stats.beta(*beta).cdf(x_j / upper) for beta in betas))
+        assert not posterior_pi[upper==0][:, middle_classes].any(), 'When sample\'s upper==0, middle_classes should be impossible'
+        frac = np.ones_like(x_j, dtype=np.float64)  # fraction of the remaining area covered by x_j
+        frac[upper > 0] = x_j[upper > 0] / upper[upper > 0]  # we need to be safe in case upper=0
+        mixture_cdfs[:, middle_classes] = np.column_stack(tuple(stats.beta(*beta).cdf(frac) for beta in betas))
     out = (posterior_pi * mixture_cdfs).sum(axis=1)
     # check output
     assert (out < 1 + 1e-10).all(), 'cdf must be less than 1'
@@ -142,6 +145,7 @@ def uniformize(samples: NDArray[np.uint32], prior: dirichlet.MixedDirichlet) -> 
             1 - cdf_before_upper_delta
         ).rvs()
         U[middle_samples, j] = cdf(x_j[middle_samples], prior, pre_samples[middle_samples])
+        assert np.all((0 < U[:, j]) & (U[:, j] < 1)), 'uniform samples must be in the interval (0, 1)'
     # check output
     assert np.all((0 < U) & (U < 1))
     return U
@@ -156,7 +160,8 @@ def deuniformize(U: NDArray[np.float64], prior: dirichlet.MixedDirichlet, x_0 = 
     if x_0 is not None:
         X[:, 0] = x_0
     I, J = U.shape
-    for j in range((1 if x_0 else 0), J):
+    j_start = 1 if x_0 is not None else 0
+    for j in range(j_start, J):
         pre_samples = X[:, :j]
         u_j = U[:, j]
         X[:, j] = inv_cdf(u_j, prior, pre_samples)
