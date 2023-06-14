@@ -5,12 +5,12 @@ __pycache__
 
 # poetry
 poetry.lock
+dist/
 
 # testing
 .coverage
 coverage_report/
 .pytest_cache/
-
 
 # ignore intelliJ files
 .idea/
