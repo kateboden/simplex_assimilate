@@ -1,5 +1,7 @@
 # Simplex Assimilate: Data assimilation on the simplex
 
+![Coverage]('tests/coverage.svg')
+
 ## Installation 
 ```bash
 pip install simplex-assimilate
