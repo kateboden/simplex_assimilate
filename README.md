@@ -1,6 +1,6 @@
 # Simplex Assimilate: Data assimilation on the simplex
 
-![Coverage]('tests/coverage.svg')
+![Coverage](tests/coverage.svg)
 
 ## Installation 
 ```bash
