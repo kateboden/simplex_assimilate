@@ -25,5 +25,5 @@ def quantize(float_samples: NDArray[np.float64]) -> NDArray[np.uint32]:
 
 
 def dequantize(samples: NDArray[np.uint32]) -> NDArray[np.float64]:
-    return samples / ONE
+    return samples.astype(np.float64) / ONE
 

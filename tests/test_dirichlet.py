@@ -27,3 +27,12 @@ def test_mixed_dirichlet_mixing_weights_must_be_positive_and_sum_to_one():
     with pytest.raises(AssertionError):
         pi = [0.3, 0.7, 0.1]
         MixedDirichlet(alphas, pi)
+
+def test_mixed_dirichlet_est_from_samples():
+    samples = np.array([[0.0, 0.2, 0.8],
+                        [0.0, 0.3, 0.7],
+                        [0.0, 0.25,0.75],
+                        [1.0, 0.0, 0.0],
+                        [0.0, 0.0, 1.0]])
+    prior = MixedDirichlet.est_from_samples(samples)
+    print(prior)

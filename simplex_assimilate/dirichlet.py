@@ -22,6 +22,9 @@ class MixedDirichlet:
             warnings.warn('Class_matrix has duplicate rows. Modelling a class with multiple Dirichlets is not supported.')
         return
 
+    def __repr__(self):
+        return f'MixedDirichlet(full_alpha={self.full_alpha}, mixture_weights={self.mixture_weights})'
+
     @classmethod
     def est_from_samples(cls, samples: NDArray[np.float64]):
         pass
@@ -30,7 +33,8 @@ class MixedDirichlet:
         s_determined = []
         mixture_weights = []
         for c in classes:
-            class_samples = samples[(samples > 0) == c, c]  # nonzero components of samples which agree with class c
+            class_rows = ((samples > 0) == c).all(axis=1)  # rows of samples which agree with class c
+            class_samples = samples[class_rows][:, c]  # nonzero components
             s, a = cls.fit_class_dirichlet(class_samples)
             alphas.append(a)
             s_determined.append(s)

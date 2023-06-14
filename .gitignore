@@ -8,7 +8,7 @@ poetry.lock
 
 # testing
 .coverage
-htmlcov/
+coverage_report/
 .pytest_cache/
 
 

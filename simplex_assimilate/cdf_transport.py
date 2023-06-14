@@ -147,14 +147,16 @@ def uniformize(samples: NDArray[np.uint32], prior: dirichlet.MixedDirichlet) -> 
     return U
 
 
-def deuniformize(U: NDArray[np.float64], prior: dirichlet.MixedDirichlet) -> NDArray[np.uint32]:
+def deuniformize(U: NDArray[np.float64], prior: dirichlet.MixedDirichlet, x_0 = None) -> NDArray[np.uint32]:
     # check inputs
     assert U.shape[1] == prior.full_alpha.shape[1], 'uniform samples must have the same number of components as prior'
     assert (0 < U).all() and (U < 1).all(), 'uniform samples must be in the interval (0, 1)'
     # build the samples
     X = np.zeros_like(U, dtype=np.uint32)
+    if x_0 is not None:
+        X[:, 0] = x_0
     I, J = U.shape
-    for j in range(J):
+    for j in range((1 if x_0 else 0), J):
         pre_samples = X[:, :j]
         u_j = U[:, j]
         X[:, j] = inv_cdf(u_j, prior, pre_samples)
