@@ -1,4 +1,5 @@
 import simplex_assimilate as sa
+from simplex_assimilate.quantize import quantize, dequantize
 import numpy as np
 import pytest
 
@@ -22,19 +23,19 @@ def test_vector_binary_search_correctly_finds_inverse_function_and_can_find_boun
 
 def test_quantize_raises_error_when_inputs_dont_sum_to_one():
     with pytest.raises(AssertionError):
-        sa.quantize(np.array([[0.0, 0.3, 0.6]]))
+        quantize(np.array([[0.0, 0.3, 0.6]]))
 def test_quantize_raises_error_on_negative_inputs():
     with pytest.raises(AssertionError):
-        sa.quantize(np.array([[-1, 1, 0]]))
+        quantize(np.array([[-1, 1, 0]]))
 
 def test_quantize_output_equals_ONE():
-    output = sa.quantize(np.array([[0.0, 0.3, 0.7],
+    output = quantize(np.array([[0.0, 0.3, 0.7],
                                    [0.2, 0.3, 0.5]]))
     assert (output.sum(axis=1) == sa.ONE).all()
 
 def test_quantize_warns_when_nonzero_is_truncated_to_zero():
     with pytest.warns(UserWarning):
-        sa.quantize(np.array([[1e-32, 1-1e-32, 0]]))
+        quantize(np.array([[1e-32, 1-1e-32, 0]]))
 
 def test_mixed_dirichlet_instantiation_warns_when_mixture_component_classes_are_not_unique():
     with pytest.warns(UserWarning):
@@ -55,69 +56,158 @@ def test_mixed_dirichlet_mixing_weights_must_be_positive_and_sum_to_one():
         sa.dirichlet.MixedDirichlet(np.array([[1, 3, 5],
                                     [1, 6, 10]]), [0.3, 0.7, 0.1])
 
-def test_cdf_asserts_at_least_one_mixture_class_consistent_w_pre_class(mixed_dirichlet):
-    with pytest.raises(AssertionError):
-        sa.cdf(x_j=np.array([[0.5]]),
-               prior=mixed_dirichlet,
-               pre_samples=np.array([[0]]))
+def test_likelihood():
+    alpha = np.array([1.0, 2.0, 7.0])
+    # incompatible class -> 0 likelihood
+    pre_x = quantize(np.array([[0.0, 0.3, 0.7],]))[0]
+    assert sa.likelihood(alpha, pre_x) == 0
+    # sample is close to alpha_mean -> high likelihood
+    pre_x = quantize(np.array([[0.1, 0.2, 0.7],]))[0]
+    assert sa.likelihood(alpha, pre_x) == 11.85901920236669
+    # including the last component is optional
+    pre_x = quantize(np.array([[0.1, 0.2, 0.7],]))[0][:-1]
+    assert sa.likelihood(alpha, pre_x) == 11.85901920236669
+    # sample is far from alpha_mean -> low likelihood
+    pre_x = quantize(np.array([[0.7, 0.2, 0.1],]))[0]
+    assert sa.likelihood(alpha, pre_x) == 0.00010080000042244779
 
-def test_cdf_asserts_pre_samples_and_x_j_have_dtype_uint32(mixed_dirichlet):
-    with pytest.raises(AssertionError):
-        sa.cdf(x_j=np.array([[0.5]]),  # wrong dtype
-               prior=mixed_dirichlet,
-               pre_samples=np.array([[np.uint32(1)]]))
-    with pytest.raises(AssertionError):
-        sa.cdf(x_j=np.array([[np.uint32(1)]]),
-               prior=mixed_dirichlet,
-               pre_samples=np.array([[0.5]])) # wrong dtype
+def test_vectorized_likelihood():
+    alphas = np.array([[1.0, 2.0, 7.0],
+                       [4.0, 3.0, 3.0],
+                       [0.0,10.0, 0.0]])
+    pre_samples = quantize(np.array([[0.1, 0.2, 0.7],
+                                        [0.7, 0.2, 0.1],
+                                        [0.0, 1.0, 0.0],
+                                        [0.0, 1.0, 0.0]]))
+    pre_samples = pre_samples[:, :-1]  # only give the first two components
+    output = np.array([[1.18590192e+01, 2.96352000e-01, 0.00000000e+00],
+                       [1.00800000e-04, 2.07446400e+00, 0.00000000e+00],
+                       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00],
+                       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+    assert np.allclose(sa.vectorized_likelihood(alphas, pre_samples), output)
+    pre_samples = pre_samples[:, :1]  # only give the first component
+    output = np.array([[3.87420489e+00, 2.97606961e-01, 0.00000000e+00],
+                       [5.90489997e-04, 4.20078959e-01, 0.00000000e+00],
+                       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00],
+                       [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
+    assert np.allclose(sa.vectorized_likelihood(alphas, pre_samples), output)
 
-def test_cdf_correct_1(mixed_dirichlet):
-    # if we observe small x_0 this favors the first mixture component
-    # which means the probability that x_1 is zero is now less than half
-    assert np.allclose(sa.cdf(x_j=(np.array([0])*sa.ONE).astype(np.uint32),
-                              prior=mixed_dirichlet,
-                              pre_samples=(np.array([[0.1]])*sa.ONE).astype(np.uint32),
-                            ),
-                       np.array([[0.357]]), atol=1e-3)
+def test_cdf_1():
+    alphas = np.array([[1.0, 2.0, 7.0]])
+    pi = np.array([1.0,])
+    prior = sa.dirichlet.MixedDirichlet(alphas, pi)
+    samples = quantize(np.array([[0.1, 0.2, 0.7]]))
+    pre_samples = samples[:,:0]
+    # x_0 ~ Beta(1, 9)
+    x_j = samples[:,0]
+    output = np.array([0.61257951])
+    assert np.allclose( sa.cdf(x_j, prior, pre_samples), output)
+    # x_2 is a delta
+    x_j = samples[:,2]
+    pre_samples = samples[:,:2]
+    assert np.allclose( sa.cdf(x_j-1, prior, pre_samples), [0.])  # no chance <x_j
+    assert np.allclose( sa.cdf(x_j  , prior, pre_samples), [1.])  # must be =x_j
 
-def test_cdf_correct_2(mixed_dirichlet):
-    # show that if x_1 is zero then the distribution of x_2
-    # must be a delta function at 1-x_0
-    open_water = round(0.4*sa.ONE)
-    upper = sa.ONE - open_water
-    assert np.allclose(sa.cdf(x_j=(np.array([upper - sa.DELTA])).astype(np.uint32),
-                                prior=mixed_dirichlet,
-                                pre_samples=np.array([[open_water, 0]]).astype(np.uint32),
-                            ),
-                          np.array([[0.]]), atol=1e-30)
-    assert np.allclose(sa.cdf(x_j=(np.array([upper])).astype(np.uint32),
-                                prior=mixed_dirichlet,
-                                pre_samples=np.array([[open_water, 0]]).astype(np.uint32),
-                            ),
-                            np.array([[1.]]), atol=1e-30)
+def test_cdf_2():
+    alphas = np.array([[1., 1., 0.],
+                       [0., 1., 1.]])
+    pi = np.array([0.5, 0.5])
+    prior = sa.dirichlet.MixedDirichlet(alphas, pi)
+    samples = quantize(np.array([[0.5, 0.5, 0.0],
+                                    [0.0, 0.5, 0.5],
+                                    [0.0, 0.5, 0.5]]))
+    # x_0 ~ Beta(1, 1) with 50% chance, otherwise 0
+    pre_samples = samples[:,:0]
+    x_j = samples[:,0]
+    output = np.array([0.75, 0.5, 0.5])
+    assert np.allclose( sa.cdf(x_j, prior, pre_samples), output)
+    # if we condition on x_0=0, then x_1 ~ Beta(1, 1)
+    # if we condition on x_0=0.5 then x_1 is a delta at 0.5
+    pre_samples = samples[:,:1]
+    x_j = samples[:,1]
+    output = np.array([1., 0.5, 0.5])
+    assert np.allclose( sa.cdf(x_j, prior, pre_samples), output)
 
-def test_cdf_correct_3():
-    # demonstrate a component compelled to be zero
-    assert np.allclose(sa.cdf(x_j=(np.array([0])).astype(np.uint32),
-                                prior=sa.dirichlet.MixedDirichlet(np.array([[4, 0, 5],]), mixture_weights=[1.]),
-                                pre_samples=(np.array([[0.1]])*sa.ONE).astype(np.uint32),
-                            ),
-                            np.array([[1.]]), atol=1e-30)
+def test_inv_cdf_1():
+    alphas = np.array([[1.0, 2.0, 7.0]])
+    pi = np.array([1.0,])
+    prior = sa.dirichlet.MixedDirichlet(alphas, pi)
+    samples = quantize(np.array([[0.1, 0.2, 0.7]]))
+    pre_samples = samples[:,:0]
+    u_j = np.array([0.5])
+    output = np.array([0.07412528758868575])  # the median is less than the mean
+    assert np.allclose( sa.inv_cdf(u_j, prior, pre_samples)/sa.ONE, output)
+    # any uniform will map to the delta
+    pre_samples = samples[:,:2]  # only give the first two components
+    u_j = np.array([0.5])
+    output = samples[:,2]
+    assert np.allclose( sa.inv_cdf(u_j, prior, pre_samples), output)
+
+def test_uniformize_1():
+    alphas = np.array([[1.0, 2.0, 7.0],
+                       [4.0, 3.0, 3.0],
+                       [0.0,10.0, 0.0]])
+    pi = np.array([0.5, 0.25, 0.25])
+    prior = sa.dirichlet.MixedDirichlet(alphas, pi)
+    samples = quantize(np.array([[0.1, 0.2, 0.7],
+                                    [0.7, 0.2, 0.1],
+                                    [0.0, 1.0, 0.0],
+                                    [0.0, 1.0, 0.0]]))
+    np.random.seed(0)
+    out = np.array([[0.55837253, 0.54209212, 0.43758721],
+                    [0.99366645, 0.79070457, 0.891773],
+                    [0.13720338, 0.60276338, 0.4236548],
+                    [0.17879734, 0.54488318, 0.64589411]])
+    assert np.allclose( sa.uniformize(samples, prior), out)
+
+def test_deuniformize_1():
+    # check that we invert the uniformization of test_uniformize_1
+    # the inversion is EXACT
+    U = np.array([[0.55837253, 0.54209212, 0.43758721],
+                  [0.99366645, 0.79070457, 0.891773],
+                  [0.13720338, 0.60276338, 0.4236548],
+                  [0.17879734, 0.54488318, 0.64589411]])
+    alphas = np.array([[1.0, 2.0, 7.0],
+                       [4.0, 3.0, 3.0],
+                       [0.0,10.0, 0.0]])
+    pi = np.array([0.5, 0.25, 0.25])
+    samples = quantize(np.array([[0.1, 0.2, 0.7],
+                                    [0.7, 0.2, 0.1],
+                                    [0.0, 1.0, 0.0],
+                                    [0.0, 1.0, 0.0]]))
+    prior = sa.dirichlet.MixedDirichlet(alphas, pi)
+    assert np.allclose( sa.deuniformize(U, prior), samples)
 
 
-def test_invert_cdf_checks_uniforms_len_equals_pre_samples_len():
-    with pytest.raises(AssertionError):
-        sa.inv_cdf(uniforms=np.array([[0.5],
-                                      [0.5]]),
-                      prior=sa.dirichlet.MixedDirichlet(np.array([[4, 0, 5],]), mixture_weights=[1.]),
-                      pre_samples=(np.array([[0.1]])*sa.ONE).astype(np.uint32),
-        )
 
-def test_inv_cdf_correct_1(mixed_dirichlet):
-    # the inverse of u_0=0.5 should be somewhere between the means of the two mixture components
-    # in the first components which are 1/3 and 1/2
-    assert np.allclose((sa.inv_cdf(uniforms=np.array([0.5, ]),
-                                    prior=mixed_dirichlet,
-                                    pre_samples=(np.array([[0.5],])*sa.ONE).astype(np.uint32),
-                                )/sa.ONE).astype(np.float64),
-                            np.array([[0.200]]), atol=1e-3)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

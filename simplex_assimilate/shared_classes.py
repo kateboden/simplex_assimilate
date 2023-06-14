@@ -11,19 +11,6 @@ from typing import List
 # ncurses.endwin() # restore terminal
 
 
-# this is
-def multiply_and_square(x):
-    return x**2 * x.prod()
-
-def test_multiply_and_square():
-    x = np.array([1, 2, 3])
-    assert np.all(multiply_and_square(x) == np.array([6, 12, 18]))
-
-def obliterate_all_but_one(x):
-    x = x.copy()
-    x[x!=x.max()] = 0
-    return x
-
 import scipy.stats
 
 
