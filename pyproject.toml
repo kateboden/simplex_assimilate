@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "simplex-assimilate"
-version = "0.1.0"
+version = "0.1.9"
 description = "Perform Data Assimilation on the Simplex. Models an ensemble as a mixture of Dirichlet distributions."
 authors = ["Oscar Laird <olaird25@gmail.com>"]
 readme = "README.md"

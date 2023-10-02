@@ -55,8 +55,12 @@ def cdf(x_j, prior: dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -
     prior_pi = prior.mixture_weights
     likelihood = vectorized_likelihood(prior.full_alpha, pre_samples)
     posterior_pi = prior_pi * likelihood  # the posterior mixture weights
-    assert posterior_pi.any(axis=1).all(), 'every sample must have at least one compatible class'
+    bad_samples = (~ posterior_pi.any(axis=1))  # samples with no compatible classes
+    if bad_samples.any():
+        assert (ONE == pre_samples[bad_samples].sum(axis=1)).all(), 'samples with no compatible classes should have full mass'
+        warnings.warn(f'every sample should have at least one compatible class, but samples {np.where(bad_samples)} do not')
     posterior_pi /= posterior_pi.sum(axis=1, keepdims=True)  # normalize the posterior mixture weights for each sample
+    posterior_pi[bad_samples] = 0  # set the posterior mixture weights for bad samples to zero from NaN
     # CREATE MASKS FOR LOWER, MIDDLE, AND UPPER
     # classes with no mass in component j
     lower_classes = (prior.full_alpha[:, j] == 0)
@@ -80,6 +84,8 @@ def cdf(x_j, prior: dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -
         frac[upper > 0] = x_j[upper > 0] / upper[upper > 0]  # we need to be safe in case upper=0
         mixture_cdfs[:, middle_classes] = np.column_stack(tuple(stats.beta(*beta).cdf(frac) for beta in betas))
     out = (posterior_pi * mixture_cdfs).sum(axis=1)
+    # bad samples should have cdf=1
+    out[bad_samples] = 1
     # check output
     assert (out < 1 + 1e-10).all(), 'cdf must be less than 1'
     out = np.minimum(out,
@@ -100,8 +106,8 @@ def inv_cdf(uniforms: NDArray[np.float64], prior: dirichlet.MixedDirichlet,
     # the uniform can map back to a delta on either end of the interval or to a value in the middle
     # we need to check all three cases
     lower, upper = np.zeros_like(uniforms).astype(np.uint32), ONE - pre_samples.sum(axis=1)  # bounds
-    lower_mask = uniforms < cdf(lower, prior, pre_samples)  # the mask of samples that map to the lower bound
-    upper_mask = uniforms > cdf(upper - DELTA, prior, pre_samples)  # the samples that map to the upper bound
+    lower_mask = uniforms <= cdf(lower, prior, pre_samples)  # the mask of samples that map to the lower bound
+    upper_mask = uniforms >= cdf(upper - DELTA, prior, pre_samples)  # the samples that map to the upper bound
     # middle_mask = np.logical_not(np.logical_or(lower_mask, upper_mask))  # the samples that map to the middle
     middle_mask = ~ (lower_mask | upper_mask)
     X[lower_mask] = lower[lower_mask]  # map the samples to the lower bound
@@ -145,16 +151,20 @@ def uniformize(samples: NDArray[np.uint32], prior: dirichlet.MixedDirichlet) -> 
             1 - cdf_before_upper_delta
         ).rvs()
         U[middle_samples, j] = cdf(x_j[middle_samples], prior, pre_samples[middle_samples])
-        assert np.all((0 < U[:, j]) & (U[:, j] < 1)), 'uniform samples must be in the interval (0, 1)'
+        # round to the interval [0, 1]
+        u_j = U[:, j]
+        assert (0 - 1e-6 < u_j).all() and (u_j < 1 + 1e-6).all(), 'cdf must be in the interval [0, 1]'
+        U[:, j] = np.maximum(np.minimum(U[:, j], 1), 0)
+
     # check output
-    assert np.all((0 < U) & (U < 1))
+    assert np.all((0 <= U) & (U <= 1))
     return U
 
 
 def deuniformize(U: NDArray[np.float64], prior: dirichlet.MixedDirichlet, x_0 = None) -> NDArray[np.uint32]:
     # check inputs
     assert U.shape[1] == prior.full_alpha.shape[1], 'uniform samples must have the same number of components as prior'
-    assert (0 < U).all() and (U < 1).all(), 'uniform samples must be in the interval (0, 1)'
+    assert (0 <= U).all() and (U <= 1).all(), 'uniform samples must be in the interval (0, 1)'
     # build the samples
     X = np.zeros_like(U, dtype=np.uint32)
     if x_0 is not None:
@@ -184,7 +194,12 @@ def vector_binary_search(f, Y):
     three = np.column_stack((X - DELTA, X, X + DELTA))  # X and the two values on either side
     X = three[
         np.arange(len(X)), np.argmin(np.abs(np.column_stack(tuple(f(COL) for COL in three.T)) - Y[:, None]), axis=1)]
-    if np.any(X == 0) or np.any(X == ONE):
-        warnings.warn("Binary search selected a value on the bounds of [0,1]."
+    if np.any(X == 0):
+        warnings.warn("Binary search selected a value on the boundary 0. "
+                      "This could cause a sample to shift to an incompatible class."
+                      "0 will be rounded up to 1 epsilon")
+        X[X == 0] = 1
+    if np.any(X == ONE):
+        warnings.warn("Binary search selected a value on the boundary ONE."
                       "This could cause a sample to shift to an incompatible class.")
     return X

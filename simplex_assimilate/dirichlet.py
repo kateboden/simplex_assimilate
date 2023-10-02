@@ -2,6 +2,7 @@ import numpy as np
 from numpy.typing import NDArray
 import warnings
 
+from simplex_assimilate.fixed_point import check_samples, ONE
 
 MAX_ALPHA = 1e4
 DEFAULT_ALPHA = 1e1
@@ -18,7 +19,7 @@ class MixedDirichlet:
         self.class_matrix = self.full_alpha > 0
         self.K, self.J = self.full_alpha.shape
         # check that every row in class_matrix is unique
-        if not len(np.unique(self.class_matrix)) == len(self.class_matrix):
+        if not len(np.unique(self.class_matrix, axis=0)) == len(self.class_matrix):
             warnings.warn('Class_matrix has duplicate rows. Modelling a class with multiple Dirichlets is not supported.')
         return
 
@@ -26,8 +27,11 @@ class MixedDirichlet:
         return f'MixedDirichlet(full_alpha={self.full_alpha}, mixture_weights={self.mixture_weights})'
 
     @classmethod
-    def est_from_samples(cls, samples: NDArray[np.float64]):
-        pass
+    def est_from_samples(cls, samples: NDArray[np.uint32]):
+        # convert to floating point
+        check_samples(samples)
+        samples = samples.astype(np.float64) / ONE
+        #
         classes = np.unique(samples > 0, axis=0)
         alphas = []
         s_determined = []
@@ -49,6 +53,8 @@ class MixedDirichlet:
         full_alpha = np.zeros((K, J))
         for i, alpha in enumerate(alphas):
             full_alpha[i, classes[i]] = alpha
+        # print('estimation of alpha: ')
+        # print(full_alpha, mixture_weights)
         return cls(full_alpha=full_alpha, mixture_weights=np.array(mixture_weights))
 
     @staticmethod
