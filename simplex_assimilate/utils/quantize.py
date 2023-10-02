@@ -4,7 +4,6 @@ import numpy as np
 
 from simplex_assimilate.fixed_point import ONE, DELTA
 
-OUTPUT_WARN_THRESHOLD = int(1e-9 * ONE)
 
 def quantize(float_samples: NDArray[np.float32]) -> NDArray[np.uint32]:
     # check inputs lie on the simplex to within tolerance DELTA

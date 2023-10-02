@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 
 from simplex_assimilate.dirichlet import MixedDirichlet
-from .utils import quantize
+from simplex_assimilate.utils.quantize import quantize
 
 class TestDirichlet:
     def test_mixed_dirichlet_instantiation_warns_when_mixture_component_classes_are_not_unique(self):
@@ -36,5 +36,16 @@ class TestDirichlet:
                             [1.0, 0.0, 0.0],
                             [0.0, 0.0, 1.0]])
         samples = quantize(samples)
+        assert samples.dtype == np.uint32
+        prior = MixedDirichlet.est_from_samples(samples)
+        print(prior)
+
+
+    def test_mixed_dirichlet_est_from_samples_all_same_class(self):
+        samples = np.array([[0.0, 0.2, 0.8],
+                            [0.0, 0.3, 0.7],
+                            [0.0, 0.9, 0.1]])
+        samples = quantize(samples)
+        assert samples.dtype == np.uint32
         prior = MixedDirichlet.est_from_samples(samples)
         print(prior)

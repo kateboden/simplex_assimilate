@@ -2,7 +2,7 @@ import numpy as np
 
 import pytest
 
-from .utils import quantize
+from simplex_assimilate.utils.quantize import quantize
 from simplex_assimilate.fixed_point import ONE
 from simplex_assimilate.cdf import vector_binary_search, likelihood, vectorized_likelihood, \
     cdf, inv_cdf, uniformize, deuniformize

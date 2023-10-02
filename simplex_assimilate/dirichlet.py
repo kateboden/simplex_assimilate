@@ -30,7 +30,6 @@ class MixedDirichlet:
     def est_from_samples(cls, samples: NDArray[np.uint32]):
         # convert to floating point
         check_samples(samples)
-        samples = samples.astype(np.float64) / ONE
         #
         classes = np.unique(samples > 0, axis=0)
         alphas = []
@@ -61,7 +60,6 @@ class MixedDirichlet:
     def fit_class_dirichlet(samples: NDArray[np.uint32]):
         check_samples(samples)
         samples = samples.astype(np.float64) / ONE  # convert to floating point
-
         assert np.all(samples > 0), 'All components of all samples must be positive.'
         log_avg = np.log(samples).mean(axis=0)
         geo_mean = np.exp(log_avg)
