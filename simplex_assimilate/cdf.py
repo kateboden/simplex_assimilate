@@ -5,7 +5,7 @@ from scipy import stats
 from numpy.typing import NDArray
 
 from simplex_assimilate import dirichlet
-from simplex_assimilate.quantize import ONE, DELTA, SIG_BITS
+from simplex_assimilate.fixed_point import ONE, DELTA, SIG_BITS
 
 def likelihood(alpha: NDArray[np.float64], pre_x: NDArray[np.uint32]) -> np.float64:
     # check inputs

@@ -58,7 +58,10 @@ class MixedDirichlet:
         return cls(full_alpha=full_alpha, mixture_weights=np.array(mixture_weights))
 
     @staticmethod
-    def fit_class_dirichlet(samples: NDArray[np.float64]):
+    def fit_class_dirichlet(samples: NDArray[np.uint32]):
+        check_samples(samples)
+        samples = samples.astype(np.float64) / ONE  # convert to floating point
+
         assert np.all(samples > 0), 'All components of all samples must be positive.'
         log_avg = np.log(samples).mean(axis=0)
         geo_mean = np.exp(log_avg)
