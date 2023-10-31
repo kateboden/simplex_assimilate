@@ -4,7 +4,7 @@
 import numpy as np
 
 SIG_BITS = 31
-ONE = np.uint32(2 ** SIG_BITS)
+ONE = np.uint32(1<<SIG_BITS)
 DELTA = np.uint32(1)
 
 def check_samples(samples):

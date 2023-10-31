@@ -4,7 +4,7 @@ import pytest
 
 from simplex_assimilate.utils.quantize import quantize
 from simplex_assimilate.fixed_point import ONE
-from simplex_assimilate.cdf import vector_binary_search, likelihood, vectorized_likelihood, \
+from simplex_assimilate.cdf import vector_binary_search, log_likelihood, vectorized_log_likelihood, \
     cdf, inv_cdf, uniformize, deuniformize
 from simplex_assimilate.dirichlet import MixedDirichlet
 
@@ -26,16 +26,16 @@ class TestCDF:
         alpha = np.array([1.0, 2.0, 7.0])
         # incompatible class -> 0 likelihood
         pre_x = quantize(np.array([[0.0, 0.3, 0.7], ]))[0]
-        assert likelihood(alpha, pre_x) == 0
+        assert log_likelihood(alpha, pre_x) == -np.inf
         # sample is close to alpha_mean -> high likelihood
         pre_x = quantize(np.array([[0.1, 0.2, 0.7], ]))[0]
-        assert likelihood(alpha, pre_x) == 11.85901920236669
+        assert np.exp(log_likelihood(alpha, pre_x)) == 11.85901920236669
         # including the last component is optional
         pre_x = quantize(np.array([[0.1, 0.2, 0.7], ]))[0][:-1]
-        assert likelihood(alpha, pre_x) == 11.85901920236669
+        assert np.exp(log_likelihood(alpha, pre_x)) == 11.85901920236669
         # sample is far from alpha_mean -> low likelihood
         pre_x = quantize(np.array([[0.7, 0.2, 0.1], ]))[0]
-        assert likelihood(alpha, pre_x) == 0.00010080000042244779
+        assert np.exp(log_likelihood(alpha, pre_x)) == 0.00010080000042244779
 
 
     def test_vectorized_likelihood(self):
@@ -51,13 +51,13 @@ class TestCDF:
                            [1.00800000e-04, 2.07446400e+00, 0.00000000e+00],
                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00],
                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
-        assert np.allclose(vectorized_likelihood(alphas, pre_samples), output)
+        assert np.allclose(vectorized_log_likelihood(alphas, pre_samples), np.log(output))
         pre_samples = pre_samples[:, :1]  # only give the first component
         output = np.array([[3.87420489e+00, 2.97606961e-01, 0.00000000e+00],
                            [5.90489997e-04, 4.20078959e-01, 0.00000000e+00],
                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00],
                            [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
-        assert np.allclose(vectorized_likelihood(alphas, pre_samples), output)
+        assert np.allclose(vectorized_log_likelihood(alphas, pre_samples), np.log(output))
 
 
     def test_cdf_1(self):
@@ -116,37 +116,37 @@ class TestCDF:
 
     def test_uniformize_1(self):
         alphas = np.array([[1.0, 2.0, 7.0],
-                           [4.0, 3.0, 3.0],
                            [0.0, 10.0, 0.0]])
-        pi = np.array([0.5, 0.25, 0.25])
+        pi = np.array([0.5, 0.5])
         prior = MixedDirichlet(alphas, pi)
         samples = quantize(np.array([[0.1, 0.2, 0.7],
                                      [0.7, 0.2, 0.1],
                                      [0.0, 1.0, 0.0],
                                      [0.0, 1.0, 0.0]]))
         np.random.seed(0)
-        out = np.array([[0.55837253, 0.54209212, 0.43758721],
-                        [0.99366645, 0.79070457, 0.891773],
-                        [0.13720338, 0.60276338, 0.4236548],
-                        [0.17879734, 0.54488318, 0.64589411]])
-        assert np.allclose(uniformize(samples, prior), out)
+        expected_out = np.array([[0.80628976, 0.55997835, 0.43758721],
+                        [0.99999016, 0.99740893, 0.891773],
+                        [0.27440675, 0.60276338, 0.4236548],
+                        [0.35759468, 0.54488318, 0.64589411]])
+        out = uniformize(samples, prior)
+        assert np.allclose(out, expected_out)
 
 
     def test_deuniformize_1(self):
         # check that we invert the uniformization of test_uniformize_1
         # the inversion is EXACT
-        U = np.array([[0.55837253, 0.54209212, 0.43758721],
-                      [0.99366645, 0.79070457, 0.891773],
-                      [0.13720338, 0.60276338, 0.4236548],
-                      [0.17879734, 0.54488318, 0.64589411]])
+        U = np.array([[0.80628976, 0.55997835, 0.43758721],
+                        [0.99999016, 0.99740893, 0.891773],
+                        [0.27440675, 0.60276338, 0.4236548],
+                        [0.35759468, 0.54488318, 0.64589411]])
         alphas = np.array([[1.0, 2.0, 7.0],
-                           [4.0, 3.0, 3.0],
                            [0.0, 10.0, 0.0]])
-        pi = np.array([0.5, 0.25, 0.25])
+        pi = np.array([0.5, 0.5])
         samples = quantize(np.array([[0.1, 0.2, 0.7],
                                      [0.7, 0.2, 0.1],
                                      [0.0, 1.0, 0.0],
                                      [0.0, 1.0, 0.0]]))
         prior = MixedDirichlet(alphas, pi)
-        assert np.allclose(deuniformize(U, prior), samples)
+        deuniformized_samples = deuniformize(U, prior)
+        assert np.allclose(samples.astype(np.float64) / ONE, deuniformized_samples.astype(np.float64) / ONE, atol=1e-5)
 

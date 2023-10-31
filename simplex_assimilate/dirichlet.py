@@ -70,7 +70,7 @@ class MixedDirichlet:
         if np.allclose(samples.min(axis=0), samples.max(axis=0)):
             warnings.warn('Multiple samples are in a tight envelope. Using max_alpha instead of MLE. '
                           f'class samples = {samples}')
-            return True, MAX_ALPHA
+            return True, MAX_ALPHA * mean
         # use the alpha of the closed form MLE using Stirling's approximation
         N, J = samples.shape
         s = ((J-1)/2) / (np.inner(mean, np.log(mean) - log_avg))

@@ -22,3 +22,6 @@ def quantize(float_samples: NDArray[np.float32]) -> NDArray[np.uint32]:
                       f"Recommended threshold is at least Δ={DELTA / ONE}.")
     assert (samples.sum(axis=1) == ONE).all(), "Samples do not sum to 1 after quantization"
     return samples
+
+def dequantize(samples: NDArray[np.uint32]) -> NDArray[np.float32]:
+    return samples.astype(np.float32) / ONE

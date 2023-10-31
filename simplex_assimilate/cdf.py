@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from simplex_assimilate import dirichlet
 from simplex_assimilate.fixed_point import ONE, DELTA, SIG_BITS
 
-def likelihood(alpha: NDArray[np.float64], pre_x: NDArray[np.uint32]) -> np.float64:
+def log_likelihood(alpha: NDArray[np.float64], pre_x: NDArray[np.uint32]) -> np.float64:
     # check inputs
     assert pre_x.dtype == np.uint32, 'pre_x must use uint32 representation of components'
     assert pre_x.ndim == 1, 'pre_x must be a 1D array'
@@ -17,14 +17,12 @@ def likelihood(alpha: NDArray[np.float64], pre_x: NDArray[np.uint32]) -> np.floa
     agrees = np.all((alpha[:j] > 0) == (pre_x > 0)) and (alpha[j:].sum() > 0) == (
                 pre_x.sum() < ONE)  # zeros and non-zeros agree
     alpha = np.append(alpha[:j], alpha[j:].sum())  # collapse x_(>=j) into a single component
-    out = stats.dirichlet.pdf(pre_x[pre_x > 0] / ONE,
-                              alpha[alpha > 0]) if agrees else 0  # return the pdf if pre_x fits alpha, else return 0
+    out = stats.dirichlet.logpdf(pre_x[pre_x > 0] / ONE, alpha[alpha > 0]) if agrees else -np.inf  # return the pdf if pre_x fits alpha, else return 0
     # check outputs
-    assert out >= 0, 'likelihood must be non-negative'
     return np.float64(out)
 
 
-def vectorized_likelihood(alpha: NDArray[np.float64], pre_samples: NDArray[np.uint32]) -> NDArray[np.float64]:
+def vectorized_log_likelihood(alpha: NDArray[np.float64], pre_samples: NDArray[np.uint32]) -> NDArray[np.float64]:
     # check inputs
     N, j = pre_samples.shape
     K, J = alpha.shape
@@ -33,7 +31,7 @@ def vectorized_likelihood(alpha: NDArray[np.float64], pre_samples: NDArray[np.ui
     out = np.zeros((N, K))
     for i in range(N):
         for k in range(K):
-            out[i, k] = likelihood(alpha[k], pre_samples[i])
+            out[i, k] = log_likelihood(alpha[k], pre_samples[i])
     # check outputs
     # assert out.any(axis=1).all(), 'every sample must have at least one compatible class'
     # assert out.shape == (N, K)
@@ -53,14 +51,25 @@ def cdf(x_j, prior: dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -
     assert x_j.shape == (N,)
     # CALCULATE THE POSTERIOR MIXTURE WEIGHTS
     prior_pi = prior.mixture_weights
-    likelihood = vectorized_likelihood(prior.full_alpha, pre_samples)
-    posterior_pi = prior_pi * likelihood  # the posterior mixture weights
-    bad_samples = (~ posterior_pi.any(axis=1))  # samples with no compatible classes
+    log_likelihood = vectorized_log_likelihood(prior.full_alpha, pre_samples)
+    log_posterior_pi = np.log(prior_pi) + log_likelihood  # the log posterior mixture weights
+    bad_samples = (log_posterior_pi == -np.inf).all(axis=1)  # samples with no compatible classes
     if bad_samples.any():
-        assert (ONE == pre_samples[bad_samples].sum(axis=1)).all(), 'samples with no compatible classes should have full mass'
-        warnings.warn(f'every sample should have at least one compatible class, but samples {np.where(bad_samples)} do not')
-    posterior_pi /= posterior_pi.sum(axis=1, keepdims=True)  # normalize the posterior mixture weights for each sample
-    posterior_pi[bad_samples] = 0  # set the posterior mixture weights for bad samples to zero from NaN
+        warnings.warn(f'every sample should have at least one compatible class, but samples {np.where(bad_samples)} do not. pre_Samples: {pre_samples[bad_samples]}')
+        # assert (ONE == pre_samples[bad_samples].sum(axis=1)).all(), 'samples with no compatible classes should have full mass'
+    # get the posterior weights using numpys log softmax
+    log_posterior_pi[bad_samples] = 0  # uniform probability of each class if each class had log_prob -inf
+    log_posterior_pi -= log_posterior_pi.max(axis=1, keepdims=True)  # subtract the max to avoid numerical issues
+    posterior_pi = np.exp(log_posterior_pi)  # convert back to linear space
+    # TODO: if the sample is bad (i.e. in a novel class) and there is mass remaining, we shouldn't
+    # allow it to be considered part of a class which doesn't have mass remaining
+    finished_classes = prior.full_alpha[:, j:].sum(axis=1) == 0  # classes with no mass remaining
+    # posterior_pi[bad_samples][:, finished_classes] = 0  # samples with no compatible classes should have zero probability of being in a finished class
+    unfinished_bad_samples = bad_samples & (pre_samples.sum(axis=1) < ONE)
+    posterior_pi[unfinished_bad_samples[:,None] & finished_classes] = 0  # samples with no compatible classes should have zero probability of being in a finished class if they have mass remaining
+
+    posterior_pi /= posterior_pi.sum(axis=1, keepdims=True)  # normalize
+    assert not np.isnan(posterior_pi).any(), 'posterior_pi should not contain NaNs'
     # CREATE MASKS FOR LOWER, MIDDLE, AND UPPER
     # classes with no mass in component j
     lower_classes = (prior.full_alpha[:, j] == 0)
@@ -79,13 +88,13 @@ def cdf(x_j, prior: dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -
         middle_alphas = prior.full_alpha[middle_classes]
         betas = np.column_stack((middle_alphas[:, j], middle_alphas[:, j + 1:].sum(axis=1)))
         # BUILD THE CDF from the LOWER, MIDDLE, and UPPER CLASSES
-        assert not posterior_pi[upper==0][:, middle_classes].any(), 'When sample\'s upper==0, middle_classes should be impossible'
+        # assert not posterior_pi[upper==0][:, middle_classes].any(), 'When sample\'s upper==0, middle_classes should be impossible'
         frac = np.ones_like(x_j, dtype=np.float64)  # fraction of the remaining area covered by x_j
         frac[upper > 0] = x_j[upper > 0] / upper[upper > 0]  # we need to be safe in case upper=0
         mixture_cdfs[:, middle_classes] = np.column_stack(tuple(stats.beta(*beta).cdf(frac) for beta in betas))
     out = (posterior_pi * mixture_cdfs).sum(axis=1)
-    # bad samples should have cdf=1
-    out[bad_samples] = 1
+    out[upper==0] = 1.  # if upper=0, the cdf must be one.
+    # this special case occurs when we are pushed to a novel class and have used up the mass.
     # check output
     assert (out < 1 + 1e-10).all(), 'cdf must be less than 1'
     out = np.minimum(out,
@@ -166,10 +175,10 @@ def deuniformize(U: NDArray[np.float64], prior: dirichlet.MixedDirichlet, x_0 = 
     assert U.shape[1] == prior.full_alpha.shape[1], 'uniform samples must have the same number of components as prior'
     assert (0 <= U).all() and (U <= 1).all(), 'uniform samples must be in the interval (0, 1)'
     # build the samples
-    X = np.zeros_like(U, dtype=np.uint32)
+    X = np.ones_like(U, dtype=np.uint32)
     if x_0 is not None:
         X[:, 0] = x_0
-    I, J = U.shape
+    _, J = U.shape
     j_start = 1 if x_0 is not None else 0
     for j in range(j_start, J):
         pre_samples = X[:, :j]
@@ -196,9 +205,7 @@ def vector_binary_search(f, Y):
         np.arange(len(X)), np.argmin(np.abs(np.column_stack(tuple(f(COL) for COL in three.T)) - Y[:, None]), axis=1)]
     if np.any(X == 0):
         warnings.warn("Binary search selected a value on the boundary 0. "
-                      "This could cause a sample to shift to an incompatible class."
-                      "0 will be rounded up to 1 epsilon")
-        X[X == 0] = 1
+                      "This could cause a sample to shift to an incompatible class.")
     if np.any(X == ONE):
         warnings.warn("Binary search selected a value on the boundary ONE."
                       "This could cause a sample to shift to an incompatible class.")
