@@ -16,6 +16,7 @@ def transport(X: NDArray[np.uint32], x_0: NDArray[np.uint32]) -> NDArray[np.uint
     """
     prior = MixedDirichlet.est_from_samples(X)
     U = uniformize(X, prior)
+    #  TODO: add support for beta likelihood as well as point likelihood
     X = deuniformize(U, prior, x_0)
     return X
 
