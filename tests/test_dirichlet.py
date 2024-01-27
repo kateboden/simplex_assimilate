@@ -2,7 +2,7 @@ import numpy as np
 
 import pytest
 
-from simplex_assimilate.dirichlet import MixedDirichlet
+from simplex_assimilate._dirichlet import MixedDirichlet
 from simplex_assimilate.utils.quantize import quantize
 
 class TestDirichlet:

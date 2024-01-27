@@ -6,7 +6,7 @@ from simplex_assimilate.utils.quantize import quantize
 from simplex_assimilate.fixed_point import ONE
 from simplex_assimilate.cdf import vector_binary_search, log_likelihood, vectorized_log_likelihood, \
     cdf, inv_cdf, uniformize, deuniformize
-from simplex_assimilate.dirichlet import MixedDirichlet
+from simplex_assimilate._dirichlet import MixedDirichlet
 
 class TestCDF:
     def test_vector_binary_search_finds_inverse_function_and_can_find_boundary(self):

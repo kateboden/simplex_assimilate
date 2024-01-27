@@ -4,7 +4,7 @@ import numpy as np
 from scipy import stats
 from numpy.typing import NDArray
 
-from simplex_assimilate import dirichlet
+from simplex_assimilate import _dirichlet
 from simplex_assimilate.fixed_point import ONE, DELTA, SIG_BITS
 
 def log_likelihood(alpha: NDArray[np.float64], pre_x: NDArray[np.uint32]) -> np.float64:
@@ -38,7 +38,7 @@ def vectorized_log_likelihood(alpha: NDArray[np.float64], pre_samples: NDArray[n
     return out
 
 
-def cdf(x_j, prior: dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -> NDArray[np.float64]:
+def cdf(x_j, prior: _dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -> NDArray[np.float64]:
     #   There are three kinds of classes:
     #     lower_classes: x_j = 0    (delta distribution)
     #     middle_classes: 0 < x_j < (1 - Σx_(<j))   (beta distribution)
@@ -106,7 +106,7 @@ def cdf(x_j, prior: dirichlet.MixedDirichlet, pre_samples: NDArray[np.uint32]) -
     return out
 
 
-def inv_cdf(uniforms: NDArray[np.float64], prior: dirichlet.MixedDirichlet,
+def inv_cdf(uniforms: NDArray[np.float64], prior: _dirichlet.MixedDirichlet,
             pre_samples: NDArray[np.uint32]) -> NDArray[np.uint32]:
     # check inputs
     assert uniforms.ndim == 1, 'uniforms must be a 1D array'
@@ -131,7 +131,7 @@ def inv_cdf(uniforms: NDArray[np.float64], prior: dirichlet.MixedDirichlet,
     return X
 
 
-def uniformize(samples: NDArray[np.uint32], prior: dirichlet.MixedDirichlet) -> NDArray[np.float64]:
+def uniformize(samples: NDArray[np.uint32], prior: _dirichlet.MixedDirichlet) -> NDArray[np.float64]:
     # check inputs
     assert samples.dtype == np.uint32, 'samples must use uint32 representation of components'
     assert samples.ndim == 2, 'samples must be a 2D array'
@@ -170,7 +170,7 @@ def uniformize(samples: NDArray[np.uint32], prior: dirichlet.MixedDirichlet) -> 
     return U
 
 
-def deuniformize(U: NDArray[np.float64], prior: dirichlet.MixedDirichlet, x_0 = None) -> NDArray[np.uint32]:
+def deuniformize(U: NDArray[np.float64], prior: _dirichlet.MixedDirichlet, x_0 = None) -> NDArray[np.uint32]:
     # check inputs
     assert U.shape[1] == prior.full_alpha.shape[1], 'uniform samples must have the same number of components as prior'
     assert (0 <= U).all() and (U <= 1).all(), 'uniform samples must be in the interval (0, 1)'

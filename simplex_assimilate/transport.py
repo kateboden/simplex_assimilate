@@ -1,7 +1,7 @@
 import numpy as np
 from numpy.typing import NDArray
 
-from simplex_assimilate.dirichlet import MixedDirichlet
+from simplex_assimilate._dirichlet import MixedDirichlet
 from simplex_assimilate.cdf import uniformize, deuniformize
 from simplex_assimilate.fixed_point import check_samples
 

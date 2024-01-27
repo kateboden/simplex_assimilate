@@ -1,1 +1,1 @@
-from simplex_assimilate import dirichlet, cdf, transport, fixed_point
+from simplex_assimilate import _dirichlet, cdf, transport, fixed_point
