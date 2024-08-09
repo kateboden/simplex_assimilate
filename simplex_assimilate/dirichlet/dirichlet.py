@@ -173,7 +173,7 @@ def loglikelihood(D, a):
     return N * (gammaln(a.sum()) - gammaln(a).sum() + ((a - 1) * logp).sum())
 
 
-def mle(D, tol=1e-7, method="meanprecision", maxiter=None):
+def mle(D, tol=1e-9, method="meanprecision", maxiter=None):
     """Iteratively computes maximum likelihood Dirichlet distribution
     for an observed data set, i.e. a for which log p(D|a) is maximum.
 
@@ -204,7 +204,7 @@ def mle(D, tol=1e-7, method="meanprecision", maxiter=None):
         return _fixedpoint(D, tol=tol, maxiter=maxiter)
 
 
-def _fixedpoint(D, tol=1e-7, maxiter=None):
+def _fixedpoint(D, tol=1e-9, maxiter=None):
     """Simple fixed point iteration method for MLE of Dirichlet distribution
 
     Parameters
@@ -241,7 +241,7 @@ def _fixedpoint(D, tol=1e-7, maxiter=None):
     )
 
 
-def _meanprecision(D, tol=1e-7, maxiter=None):
+def _meanprecision(D, tol=1e-9, maxiter=None):
     """Mean/precision method for MLE of Dirichlet distribution
 
     Uses alternating estimations of mean and precision.
@@ -263,15 +263,15 @@ def _meanprecision(D, tol=1e-7, maxiter=None):
     a : (K,) shape array
         Estimated parameters for Dirichlet distribution."""
     logp = log(D).mean(axis=0)
-    a0 = _init_a(D)
-    s0 = a0.sum()
+    a0 = _init_a(D)                         # Initialize alpha using MoM
+    s0 = a0.sum()                           # Initialize s
     if s0 < 0:
         a0 = a0 / s0
         s0 = 1
     elif s0 == 0:
         a0 = ones(a0.shape) / len(a0)
         s0 = 1
-    m0 = a0 / s0
+    m0 = a0 / s0                            # Normalizes a0
 
     # Start updating
     if maxiter is None:
@@ -282,7 +282,7 @@ def _meanprecision(D, tol=1e-7, maxiter=None):
         a1 = _fit_m(D, a1, logp, tol=tol)
         m = a1 / s1
         # Much faster convergence than with the more obvious condition
-        # `norm(a1-a0) < tol`
+        #norm(a1-a0) < tol
         if abs(loglikelihood(D, a1) - loglikelihood(D, a0)) < tol:
             return a1
         a0 = a1
@@ -291,7 +291,7 @@ def _meanprecision(D, tol=1e-7, maxiter=None):
     )
 
 
-def _fit_s(D, a0, logp, tol=1e-7, maxiter=1000):
+def _fit_s(D, a0, logp, tol=1e-9, maxiter=200000):
     """Update parameters via MLE of precision with fixed mean
 
     Parameters
@@ -333,13 +333,15 @@ def _fit_s(D, a0, logp, tol=1e-7, maxiter=1000):
             raise NotConvergingError(f"Unable to update s from {s0}")
 
         a = s1 * m
-        if abs(s1 - s0) < tol:
+        if abs(s1 - s0) < tol*s0:
             return a
+            #print("s is " + str(s1) + " iter number " + str(i))
+            
 
-    raise NotConvergingError(f"Failed to converge after {maxiter} iterations, " f"s is {s1}")
+    raise NotConvergingError(f"Failed to converge (_fit_s) after {maxiter} iterations, " f"s is {s1}", f"class samples are {D}")
 
 
-def _fit_m(D, a0, logp, tol=1e-7, maxiter=1000):
+def _fit_m(D, a0, logp, tol=1e-9, maxiter= 1000):
     """Update parameters via MLE of mean with fixed precision s
 
     Parameters
@@ -371,7 +373,7 @@ def _fit_m(D, a0, logp, tol=1e-7, maxiter=1000):
             return a1
         a0 = a1
 
-    raise NotConvergingError(f"Failed to converge after {maxiter} iterations, " f"s is {s}")
+    raise NotConvergingError(f"Failed to converge (_fit_m) after {maxiter} iterations, " f"s is {s}")
 
 
 def _init_a(D):
@@ -389,7 +391,10 @@ def _init_a(D):
         Crude guess for parameters of Dirichlet distribution."""
     E = D.mean(axis=0)
     E2 = (D ** 2).mean(axis=0)
-    return ((E[0] - E2[0]) / (E2[0] - E[0] ** 2)) * E
+    scale_factor = min(np.min(np.nan_to_num((E - E2) / (E2 - E ** 2))),1e2)
+    init_a = scale_factor * E
+    return init_a
+   
 
 
 def _ipsi(y, tol=1.48e-9, maxiter=10):

@@ -1,7 +1,27 @@
 import numpy as np
 import scipy
-import dirichlet
+from simplex_assimilate import dirichlet
 from scipy.optimize import linprog
+# CHANGES import from _dirichlet
+from simplex_assimilate._dirichlet import MixedDirichlet
+from simplex_assimilate.utils.quantize import quantize
+
+
+DEFAULT_ALPHA = 1e11
+
+def diff(class_samples):
+    n = np.size(class_samples, 0)     # determine number of ensemble members in the class
+    diff = 0                          # initialize difference to be 0
+    i = 1                             # initialize looping index
+    if n == 1:
+        return 0
+    else:
+        while diff == 0 and i < n:              # If the difference is zero keep checking, if not return the difference- stop when you have checked all rows
+            diff = class_samples[0]-class_samples[i]
+            diff = np.linalg.norm(diff)
+            i +=1
+        return diff
+            
 
 
 def est_mixed_dirichlet(samples):
@@ -35,13 +55,23 @@ def est_mixed_dirichlet(samples):
     classes, class_idxs, class_counts = np.unique(samples > 0, axis=0, return_inverse=True, return_counts=True)
     pi = class_counts / N
     K = len(classes)
+    print('There are', classes.shape[0] ,'classes')
+    
     # then estimate the parameters for each class
     alphas = np.zeros_like(classes, dtype=np.float64)
     for i, c in enumerate(classes):
         class_samples = samples[class_idxs == i][:, c]
-        alpha = dirichlet.mle(class_samples)
-        alphas[i][c] = alpha
+        Diff = diff(class_samples)
+        # New code- logic to check that the there is separation between class samples (also that there is more than one class sample)
+        if Diff == 0:
+            print('Class ' + str(i) + ' has ' + str(class_counts[i]) + ' ensemble member(s) that are the same, cannot estimate magnitude of alpha. Using default alpha')
+            alpha = np.tile(DEFAULT_ALPHA, np.size(class_samples,1))*class_samples.mean(axis = 0)
+            alphas[i][c] = alpha  
+        else: 
+            alpha = dirichlet.mle(class_samples)
+            alphas[i][c] = alpha
     return classes, class_idxs, alphas, pi
+
 
 def unif_dirichlet_samples(samples, alpha):
     """
@@ -92,9 +122,10 @@ def unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas):
         U[entry_idxs] = unif_dirichlet_samples(class_samples, alpha)
     return U
 
-def get_class_log_likelihood(observation, classes, alphas):
+
+def get_class_log_likelihood(x0, classes, alphas):
     """
-    likelihood of each class given the observation
+    likelihood of each class given the x0
     
     >>> np.random.seed(1)
     >>> classes = np.array([[False, True, True], [True, True, False], [True, True, True]])
@@ -104,21 +135,25 @@ def get_class_log_likelihood(observation, classes, alphas):
     """
     no_water_classes = classes[:, 0] == 0
     all_water_classes = classes[:, 1:].sum(axis=1) == 0
-    if observation == 0.0:
+    if x0 == 0.0:
         return no_water_classes.astype(np.float64)
-    if observation == 1.0:
+    if x0 == 1.0:
         return all_water_classes.astype(np.float64)
     compat_classes = np.logical_not(np.logical_or(no_water_classes, all_water_classes))
     a = alphas[compat_classes, 0]
     b = alphas[compat_classes, 1:].sum(axis=1)
-    betas = scipy.stats.beta(a, b)
-    compat_likelihoods = betas.logpdf(observation)
+    betas = scipy.stats.beta(a, b)                                             # K different beta distributions, one for each class
+    compat_likelihoods = betas.logpdf(x0)
     likelihoods = np.zeros(len(classes), dtype=np.float64)
     likelihoods[:] = -np.inf
     likelihoods[compat_classes] = compat_likelihoods
     return likelihoods
+
+
 def get_class_log_posterior(pi, log_likelihoods):
     return np.log(pi) + log_likelihoods
+
+ 
 def get_class_transition_matrix(pi, posterior, costs=None):
     """
     Given the prior and posterior distributions, and a transition cost matrix,
@@ -141,23 +176,27 @@ def get_class_transition_matrix(pi, posterior, costs=None):
     # For A1 = p- and 1^T A = p+, we reshape A as a vector and construct the matrix
     A_eq = np.zeros((2 * n, n * n))
     for i in range(n):
-        A_eq[i, i*n:(i+1)*n] = 1  # Constraints for A1 = p-
-        A_eq[n+i, i::n] = 1  # Constraints for 1^T A = p+
-    b_eq = np.concatenate([pi, posterior])
-    # Bounds for each variable in A to be greater than 0
+        A_eq[i, i*n:(i+1)*n] = 1   # Constraints for A*1 = 1
+        A_eq[n+i, i::n] = pi       # Constraints for pi^T*A = posterior
+    b_eq = np.concatenate([np.ones(n), posterior])
+    # Bounds for each variable in A to be between 0 and 1
     bounds = [(0, 1) for _ in range(n * n)]
     # Solve the linear programming problem
-    result = linprog(costs, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
+    result = linprog(costs, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs-ds', options = {'presolve': True, 'autoscale': True})
     # Check if the optimization was successful
     if result.success:
         # Reshape the result back into a matrix form
-        A_solution = np.reshape(result.x, (n, n))
+        A_solution = abs(np.reshape(result.x, (n, n)))
         # normalize
         A_solution[A_solution.sum(axis=1) == 0] = 1 / n
         A_solution /= A_solution.sum(axis=1, keepdims=True)
         return A_solution
     else:
         print("Optimization failed:", result.message)
+        print("norm(pi-posterior): ", np.linalg.norm(pi-posterior))
+        return np.eye(n)
+        
+        
 def get_post_class_idxs(class_idxs, transition_matrix):
     """
     Apply a transition matrix to the class indices to get the posterior class indices
@@ -167,8 +206,10 @@ def get_post_class_idxs(class_idxs, transition_matrix):
     >>> get_post_class_idxs(class_idxs, transition_matrix)
     array([2, 2, 2, 2, 2, 2, 0, 3, 3])
     """
-    post_class_idxs = np.array([np.random.choice(len(transition_matrix), p=transition_matrix[i]) for i in class_idxs])
+    post_class_idxs = np.random.choice(len(transition_matrix), p=transition_matrix[class_idxs])
     return post_class_idxs
+    
+    
 def invert_unifs(alpha, uniforms, obs=None):
     """
     map uniform rvs to dirichlet rvs using the inverse cdf of the marginal dirichlet distribution (beta)
@@ -181,15 +222,17 @@ def invert_unifs(alpha, uniforms, obs=None):
     """
     X = np.zeros_like(uniforms, dtype=np.float64)
     if obs:
-        X[:, 0] = obs
-    for i in range(1 if obs else 0, len(alpha) - 1):
+        X[0] = obs
+    for i in range(1 if obs else 0, len(alpha) - 1):  # cutting the ribbon 
         a = alpha[i]
         b = alpha[i:].sum() - alpha[i]
         beta = scipy.stats.beta(a, b)
-        remaining_mass = 1 - X[:, :i].sum(axis=1)
-        X[:, i] = beta.ppf(uniforms[:, i]) * remaining_mass
-    X[:, -1] = 1 - X.sum(axis=1)
+        remaining_mass = 1 - X[:i].sum()
+        X[i] = beta.ppf(uniforms[i]) * remaining_mass
+    X[-1] = 1 - X.sum()
     return X
+
+
 def invert_mixed_unifs(post_class_idxs, classes, alphas, uniforms, obs=None):
     """
     Invert the uniform rvs for each class to get the posterior dirichlet rvs
@@ -206,52 +249,60 @@ def invert_mixed_unifs(post_class_idxs, classes, alphas, uniforms, obs=None):
            [0.24663645, 0.75336355, 0.        ]])
     """
     X = np.zeros_like(uniforms, dtype=np.float64)
-    for i, c in enumerate(classes):
-        rows = np.where(post_class_idxs == i)[0]
-        cols = np.where(c)[0]
-        alpha = alphas[i, c]
-        entry_idxs = np.ix_(rows, cols)
-        X[entry_idxs] = invert_unifs(alpha, uniforms[entry_idxs], obs)
+    cols = np.where(classes[post_class_idxs,:])[0]
+    alpha = alphas[post_class_idxs,cols]
+    X[cols] = invert_unifs(alpha, uniforms[cols], obs)
     return X
 
-def get_post_class_idxs_pipeline(observation, classes, class_idxs, alphas, pi):
+
+def get_post_class_idxs_pipeline(x0, classes, class_idxs, alphas, pi):
     """
-    Give the prior and the observation, get the posterior class indices
+    Given the prior and the x0, get the posterior class indices
 
     >>> np.random.seed(1)
-    >>> observation = 0.5
+    >>> x0 = 0.5
     >>> classes = np.array([[False, True, True], [True, True, False], [True, True, True]])
     >>> class_idxs = np.array([0, 0, 0, 1, 1, 1])
     >>> alphas = np.array([[0, 1, 2], [3, 4, 0], [1, 2, 3]])
     >>> pi = np.array([0.3, 0.3, 0.4])
-    >>> get_post_class_idxs_pipeline(observation, classes, class_idxs, alphas, pi)
+    >>> get_post_class_idxs_pipeline(x0, classes, class_idxs, alphas, pi)
     array([1, 1, 1, 1, 1, 1])
     """
-    ll = get_class_log_likelihood(observation, classes, alphas)
+    # Conditioning the class weights on the prior x_0 (open water fraction)
+    ll = get_class_log_likelihood(x0[0], classes, alphas)
     lp = get_class_log_posterior(pi, ll)
+    lp -= lp.max()
+    pi_x0 = np.exp(lp) / np.exp(lp).sum()
+    
+    # Conditioning the class weights on the posterior x_0 (open water fraction)
+    ll = get_class_log_likelihood(x0[1], classes, alphas)
+    lp = get_class_log_posterior(pi, ll)
+    lp -= lp.max()
     post = np.exp(lp) / np.exp(lp).sum()
-    A = get_class_transition_matrix(pi, post)
+    
+    A = get_class_transition_matrix(pi_x0, post)
     post_class_idxs = get_post_class_idxs(class_idxs, A)
     return post_class_idxs
-def transport_pipeline(samples, observation):
+
+
+def transport_pipeline(samples, x0):
     """
     Empirical Bayes transport pipeline
     
     >>> np.random.seed(1)
     >>> samples = np.array([[0.4, 0.3, 0.3], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
-    >>> observation = 0.25
-    >>> transport_pipeline(samples, observation)
+    >>> x0 = 0.25
+    >>> transport_pipeline(samples, x0)
     array([[0.25      , 0.75      , 0.        ],
            [0.25      , 0.32142857, 0.42857143],
            [0.25      , 0.75      , 0.        ],
            [0.25      , 0.75      , 0.        ]])
     """
     classes, class_idxs, alphas, pi = est_mixed_dirichlet(samples)
-    # print(f"classes: {classes}\nclass_idxs: {class_idxs}\nalphas: {alphas}\npi: {pi}")
     U = unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
-    # print(f"U: {U}")
-    post_class_idxs = get_post_class_idxs_pipeline(observation, classes, class_idxs, alphas, pi)
-    # print(f"post_class_idxs: {post_class_idxs}")
-    X = invert_mixed_unifs(post_class_idxs, classes, alphas, U, observation)
-    # print(f"X: {X}")
+    X = np.zeros_like(samples)
+    post_class_idxs = np.zeros_like(class_idxs)
+    for n in range(samples.shape[0]):  # each ensemble member one at a time
+        post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
+        X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U[n,:], x0[n,1])
     return X
