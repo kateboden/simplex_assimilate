@@ -14,8 +14,6 @@ from simplex_assimilate import dirichlet
 import scipy.stats as ss
 from matplotlib import pyplot as plt
 
-sys.path.append('/Users/kabo1917/opt/simplex_assimilate_kb/simplex_assimilate')
-import simple_class_transport
 
 """
 TEST transport_pipeline 
@@ -40,8 +38,6 @@ ax[0,3].plot(aicen[:,3],'*-')
 ax[0,3].set_title('Cat 4')
 ax[0,4].plot(aicen[:,4],'*-')
 ax[0,4].set_title('Cat 4')
-
-
 
 
 
@@ -80,19 +76,18 @@ ax.set_title('Method = Fixed Point')
 
 """
 
-TEST unif_dirichlet_samples
+TEST dir_to_unif
 
 1. Pick alpha
 2. Create random samples from a dirichlet distribution 
 3. Transform dirichlet r.v to uniform r.v
 
-Not testing unif_dirichlet_mixed_samples because the only difference is that the mixed version first separates
-by class and then calls unif_dirichlet_samples on each class
 
 """
+n = 200
 
-alpha = np.array([.1,1,10])
-samples = ss.dirichlet.rvs(alpha, size = 100, random_state = 1)
+alpha = np.array([.1,1,5])
+samples = ss.dirichlet.rvs(alpha, size = n, random_state = 1)
 
 # Plot the beta distributions from the dirichlet distribution
 fig, axs = plt.subplots(1,3, sharey = True)
@@ -104,11 +99,22 @@ axs[1].set_title('Alpha = ' + str(alpha[1]))
 axs[2].hist(samples[:,2])
 axs[2].set_title('Alpha = ' + str(alpha[2]))
 
+fig, axs = plt.subplots(1,3, sharey = True)
+fig.suptitle('Initial dirichlet r.v')
+axs[0].scatter(range(n),samples[:,0])
+axs[0].set_title('Alpha = ' + str(alpha[0]))
+axs[1].scatter(range(n),samples[:,1])
+axs[1].set_title('Alpha = ' + str(alpha[1]))
+axs[2].scatter(range(n),samples[:,2])
+axs[2].set_title('Alpha = ' + str(alpha[2]))
+
 # create uniform samples
-u = simple_class_transport.unif_dirichlet_samples(samples, alpha)
+u = np.zeros(shape = np.shape(samples))
+for i in range(n):
+    u[i] = sa.simple_class_transport.dir_to_unif(samples[i], class_idx = 0, alphas = alpha)
+    
 
-# Plot uniform samples
-
+# Plot uniform samples as histograms
 fig, axs = plt.subplots(1,3, sharey = True)
 axs[0].hist(u[:,0])
 axs[0].set_title('Alpha = ' + str(alpha[0]))
@@ -118,6 +124,45 @@ axs[2].hist(u[:,2])
 axs[2].set_title('Alpha = ' + str(alpha[2]))
 fig.suptitle('New transformed uniform r.v')
 
+# Plot uniform samples as scatter and look at cross correlation
+fig, axs = plt.subplots(2,3, sharey = True)
+axs[0,0].scatter(range(n), u[:,0])
+axs[0,0].set_title('u_0')
+axs[0,1].scatter(range(n),u[:,1])
+axs[0,1].set_title('u_1')
+axs[0,2].scatter(range(n),u[:,2])
+axs[0,2].set_title('u_2')
+axs[1,0].scatter(u[:,0],u[:,1])
+axs[1,0].set_xlabel('u_0')
+axs[1,0].set_ylabel('u_1')
+axs[1,1].scatter(u[:,0],u[:,2])
+axs[1,1].set_xlabel('u_0')
+axs[1,1].set_ylabel('u_2')
+axs[1,2].scatter(u[:,1],u[:,2])
+axs[1,2].set_xlabel('u_1')
+axs[1,2].set_ylabel('u_2')
+
+# 3-dimensional visualization
+x1 = np.linspace(0,1)
+x2 = np.linspace(0,1)
+xx, yy = np.meshgrid(x1, x2)
+fig = plt.figure()
+ax = fig.add_subplot(projection = '3d')
+ax.plot_surface(xx, yy, 1-yy-xx, alpha = 0.2)
+ax.scatter(samples[:,0], samples[:,1], samples[:,2])
+ax.set_zlim([0,1])
+ax.set_title("Dirichlet Samples")
+plt.savefig('figs_kb/test_dir_3d.png', dpi = 360)
+
+# uniform
+fig = plt.figure()
+ax = fig.add_subplot(projection = '3d')
+ax.scatter(u[:,0], u[:,1], u[:,2], c = 'purple')
+ax.set_title("Uniform Samples")
+plt.savefig('figs_kb/test_unif_3d.png', dpi = 360)
+
+
+# 
 
 
 """

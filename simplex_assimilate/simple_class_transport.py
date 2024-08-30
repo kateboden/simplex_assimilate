@@ -9,6 +9,7 @@ from simplex_assimilate.utils.quantize import quantize
 
 DEFAULT_ALPHA = 1e11
 
+# This function is used to see if class members are different, if there is only one class member then diff = 0
 def diff(class_samples):
     n = np.size(class_samples, 0)     # determine number of ensemble members in the class
     diff = 0                          # initialize difference to be 0
@@ -21,9 +22,8 @@ def diff(class_samples):
             diff = np.linalg.norm(diff)
             i +=1
         return diff
-            
 
-
+    
 def est_mixed_dirichlet(samples):
     """
     given (N, D) samples which may contain zeros
@@ -73,53 +73,89 @@ def est_mixed_dirichlet(samples):
     return classes, class_idxs, alphas, pi
 
 
-def unif_dirichlet_samples(samples, alpha):
-    """
-    given (N, E) samples from a dirichlet distribution with parameter alpha
-    sequentially evaluate the inverse cdf of the marginal dirichlet distribution (beta)
-    to map the samples to uniform rvs
+# No longer using
+# def unif_dirichlet_samples(samples, alpha):
+#     """
+#     given (N, E) samples from a dirichlet distribution with parameter alpha
+#     sequentially evaluate the inverse cdf of the marginal dirichlet distribution (beta)
+#     to map the samples to uniform rvs
 
-    >>> np.random.seed(1)
-    >>> samples = np.array([[0.1, 0.2, 0.7], [0.3, 0.3, 0.4]])
-    >>> alpha = np.array([1, 2, 3])
-    >>> unif_dirichlet_samples(samples, alpha)
-    array([[0.40951   , 0.21582076, 0.417022  ],
-           [0.83193   , 0.57351104, 0.72032449]])
+#     >>> np.random.seed(1)
+#     >>> samples = np.array([[0.1, 0.2, 0.7], [0.3, 0.3, 0.4]])
+#     >>> alpha = np.array([1, 2, 3])
+#     >>> unif_dirichlet_samples(samples, alpha)
+#     array([[0.40951   , 0.21582076, 0.417022  ],
+#             [0.83193   , 0.57351104, 0.72032449]])
+#     """
+#     a = alpha # alpha weight per entry
+#     b = alpha.sum() - alpha.cumsum()  # remaining alpha weight- Oscar
+#     #b2 = findB(alpha)                             # Kate's beta
+#     betas = scipy.stats.beta(a[:-1], b[:-1])
+#     remaining_mass = 1 - samples.cumsum(axis=1) # remaining mass per entry
+#     rel_samples = (samples) / (samples + remaining_mass) # how much of the remaining mass is assigned to each entry
+#     u = betas.cdf(rel_samples[:, :-1])
+#     # stack a col of unifs at the end
+#     u = np.hstack([u, np.random.uniform(size=(samples.shape[0], 1))])
+#     return u
+
+
+# No longer using
+# def unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas):
+#     """
+#     Given (N, D) samples from a mixed dirichlet distribution and their classes
+#     map the samples to a uniform distribution using the cdf of the marginal dirichlet distribution (beta)
+
+#     >>> np.random.seed(10)
+#     >>> samples = np.array([[0.1, 0.2, 0.7], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
+#     >>> classes = np.array([[True, True, True], [True, True, False]])
+#     >>> class_idxs = np.array([0, 0, 1, 1])
+#     >>> alphas = np.array([[1, 2, 3], [3, 3, 0]])
+#     >>> unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
+#     array([[0.40951   , 0.21582076, 0.00394827],
+#             [0.83193   , 0.57351104, 0.51219226],
+#             [0.00856   , 0.81262096, 0.16911084],
+#             [0.05792   , 0.61252607, 0.95339335]])
+#     """
+#     U = np.random.uniform(size=samples.shape)
+#     for i, c in enumerate(classes):
+#         row_idxs = np.where(class_idxs == i)[0]
+#         col_idxs = np.where(c)[0]
+#         entry_idxs = np.ix_(row_idxs, col_idxs)
+#         class_samples = samples[entry_idxs]
+#         alpha = alphas[i, c]
+#         U[entry_idxs] = unif_dirichlet_samples(class_samples, alpha)
+#     return U
+
+# Kate addition, one ensemble member at a time
+# Be careful to only use values that are non_zero
+def dir_to_unif(sample, class_idx, alphas):
     """
-    a = alpha # alpha weight per entry
-    b = alpha.sum() - alpha.cumsum()  # remaining alpha weight
+    Given a single ensemble member, its class, and the alphas
+    map the sample to a uniform distribution using the cdf of the marginal dirichlet distribution (beta)
+
+    """
+    # Initialize random uniform sample
+    U = np.random.uniform(size=sample.shape)
+    
+    # Find location where the original sample is nonzero
+    entry_idxs = np.where(sample)
+    sample = sample[entry_idxs]
+    
+    # Build the beta pdfs
+    if np.ndim(alphas == 1):
+        a = alphas[entry_idxs]
+    else:
+        a = alphas[class_idx][entry_idxs]
+    b = a.sum() - a.cumsum()                       
     betas = scipy.stats.beta(a[:-1], b[:-1])
-    remaining_mass = 1 - samples.cumsum(axis=1) # remaining mass per entry
-    rel_samples = (samples) / (samples + remaining_mass) # how much of the remaining mass is assigned to each entry
-    u = betas.cdf(rel_samples[:, :-1])
-    # stack a col of unifs at the end
-    u = np.hstack([u, np.random.uniform(size=(samples.shape[0], 1))])
-    return u
-
-def unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas):
-    """
-    Given (N, D) samples from a mixed dirichlet distribution and their classes
-    map the samples to a uniform distribution using the inverse cdf of the marginal dirichlet distribution (beta)
-
-    >>> np.random.seed(10)
-    >>> samples = np.array([[0.1, 0.2, 0.7], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
-    >>> classes = np.array([[True, True, True], [True, True, False]])
-    >>> class_idxs = np.array([0, 0, 1, 1])
-    >>> alphas = np.array([[1, 2, 3], [3, 3, 0]])
-    >>> unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
-    array([[0.40951   , 0.21582076, 0.00394827],
-           [0.83193   , 0.57351104, 0.51219226],
-           [0.00856   , 0.81262096, 0.16911084],
-           [0.05792   , 0.61252607, 0.95339335]])
-    """
-    U = np.random.uniform(size=samples.shape)
-    for i, c in enumerate(classes):
-        row_idxs = np.where(class_idxs == i)[0]
-        col_idxs = np.where(c)[0]
-        entry_idxs = np.ix_(row_idxs, col_idxs)
-        class_samples = samples[entry_idxs]
-        alpha = alphas[i, c]
-        U[entry_idxs] = unif_dirichlet_samples(class_samples, alpha)
+    remaining_mass = 1 - sample.cumsum()           
+    rel_sample = (sample) / (sample + remaining_mass) 
+    # Apply the beta cdf
+    u = betas.cdf(rel_sample[:-1])
+    # add a uniform at the end
+    u = np.append(u, np.random.uniform(size=1))
+    # Update the uniform sample
+    U[entry_idxs] = u
     return U
 
 
@@ -285,6 +321,29 @@ def get_post_class_idxs_pipeline(x0, classes, class_idxs, alphas, pi):
     return post_class_idxs
 
 
+# def transport_pipeline(samples, x0):
+#     """
+#     Empirical Bayes transport pipeline
+    
+#     >>> np.random.seed(1)
+#     >>> samples = np.array([[0.4, 0.3, 0.3], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
+#     >>> x0 = 0.25
+#     >>> transport_pipeline(samples, x0)
+#     array([[0.25      , 0.75      , 0.        ],
+#             [0.25      , 0.32142857, 0.42857143],
+#             [0.25      , 0.75      , 0.        ],
+#             [0.25      , 0.75      , 0.        ]])
+#     """
+#     classes, class_idxs, alphas, pi = est_mixed_dirichlet(samples)
+#     U = unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
+#     X = np.zeros_like(samples)
+#     post_class_idxs = np.zeros_like(class_idxs)
+#     for n in range(samples.shape[0]):  # each ensemble member one at a time
+#         post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
+#         X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U[n,:], x0[n,1])
+#     return X
+
+# Kate version
 def transport_pipeline(samples, x0):
     """
     Empirical Bayes transport pipeline
@@ -294,15 +353,52 @@ def transport_pipeline(samples, x0):
     >>> x0 = 0.25
     >>> transport_pipeline(samples, x0)
     array([[0.25      , 0.75      , 0.        ],
-           [0.25      , 0.32142857, 0.42857143],
-           [0.25      , 0.75      , 0.        ],
-           [0.25      , 0.75      , 0.        ]])
+            [0.25      , 0.32142857, 0.42857143],
+            [0.25      , 0.75      , 0.        ],
+            [0.25      , 0.75      , 0.        ]])
     """
+    print("Running new version")
     classes, class_idxs, alphas, pi = est_mixed_dirichlet(samples)
-    U = unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
+    #U = unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
     X = np.zeros_like(samples)
     post_class_idxs = np.zeros_like(class_idxs)
     for n in range(samples.shape[0]):  # each ensemble member one at a time
         post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
-        X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U[n,:], x0[n,1])
+        # Check if the ensemble member changes class
+        if post_class_idxs[n] == class_idxs[n]:                         # Scale
+            X[n, 0] = x0[n,1]
+            X[n,1:] = (1-x0[n,1])/(1-x0[n,0])*samples[n,1:]
+        else:
+            print("An ensemble member changed class")
+            U_new = dir_to_unif(samples[n], class_idxs[n], alphas)                                                           # Class transport
+            X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U_new, x0[n,1])
     return X
+
+
+    """
+    Empirical Bayes transport pipeline
+    
+    >>> np.random.seed(1)
+    >>> samples = np.array([[0.4, 0.3, 0.3], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
+    >>> x0 = 0.25
+    >>> transport_pipeline(samples, x0)
+    array([[0.25      , 0.75      , 0.        ],
+            [0.25      , 0.32142857, 0.42857143],
+            [0.25      , 0.75      , 0.        ],
+            [0.25      , 0.75      , 0.        ]])
+    """
+    classes, class_idxs, alphas, pi = est_mixed_dirichlet(samples)
+    X = np.zeros_like(samples)
+    post_class_idxs = np.zeros_like(class_idxs)
+    for n in range(samples.shape[0]):  # each ensemble member one at a time
+        post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
+        # Check if the ensemble member changes class
+        if post_class_idxs[n] == class_idxs[n]:                         # Scale
+            X[n, 0] = x0[n,1]
+            X[n,1:] = (1-x0[n,1])/(1-x0[n,0])*samples[n,1:]
+        else:
+            U = unif_dirichlet_mixed_samples(samples[n], classes[n], class_idxs[n], alphas)                                                           # Class transport
+            X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U[n,:], x0[n,1])
+    return X
+
+

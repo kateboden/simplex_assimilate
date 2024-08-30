@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 # Plot the beta distribution pdf and cdf for various values of a and b
-a = 0.005
-b = 0.005
+a = 1e11
+b = 1e11
 
 x = np.linspace(0.01,0.99,100)
 betaPDF = beta.pdf(x,a,b)
