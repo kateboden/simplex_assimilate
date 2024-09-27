@@ -152,18 +152,17 @@ ax.plot_surface(xx, yy, 1-yy-xx, alpha = 0.2)
 ax.scatter(samples[:,0], samples[:,1], samples[:,2])
 ax.set_zlim([0,1])
 ax.set_title("Dirichlet Samples")
-plt.savefig('figs_kb/test_dir_3d.png', dpi = 360)
+#plt.savefig('figs_kb/test_dir_3d.png', dpi = 360)
 
 # uniform
 fig = plt.figure()
 ax = fig.add_subplot(projection = '3d')
 ax.scatter(u[:,0], u[:,1], u[:,2], c = 'purple')
 ax.set_title("Uniform Samples")
-plt.savefig('figs_kb/test_unif_3d.png', dpi = 360)
+#plt.savefig('figs_kb/test_unif_3d.png', dpi = 360)
 
 
-# 
-
+#
 
 """
 

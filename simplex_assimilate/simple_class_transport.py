@@ -23,6 +23,12 @@ def diff(class_samples):
             i +=1
         return diff
 
+
+def get_scale_factor(a0_prior, a0_posterior):
+    try:
+        return (1-a0_posterior)/(1-a0_prior)
+    except ZeroDivisionError:
+        return 1
     
 def est_mixed_dirichlet(samples):
     """
@@ -73,59 +79,6 @@ def est_mixed_dirichlet(samples):
     return classes, class_idxs, alphas, pi
 
 
-# No longer using
-# def unif_dirichlet_samples(samples, alpha):
-#     """
-#     given (N, E) samples from a dirichlet distribution with parameter alpha
-#     sequentially evaluate the inverse cdf of the marginal dirichlet distribution (beta)
-#     to map the samples to uniform rvs
-
-#     >>> np.random.seed(1)
-#     >>> samples = np.array([[0.1, 0.2, 0.7], [0.3, 0.3, 0.4]])
-#     >>> alpha = np.array([1, 2, 3])
-#     >>> unif_dirichlet_samples(samples, alpha)
-#     array([[0.40951   , 0.21582076, 0.417022  ],
-#             [0.83193   , 0.57351104, 0.72032449]])
-#     """
-#     a = alpha # alpha weight per entry
-#     b = alpha.sum() - alpha.cumsum()  # remaining alpha weight- Oscar
-#     #b2 = findB(alpha)                             # Kate's beta
-#     betas = scipy.stats.beta(a[:-1], b[:-1])
-#     remaining_mass = 1 - samples.cumsum(axis=1) # remaining mass per entry
-#     rel_samples = (samples) / (samples + remaining_mass) # how much of the remaining mass is assigned to each entry
-#     u = betas.cdf(rel_samples[:, :-1])
-#     # stack a col of unifs at the end
-#     u = np.hstack([u, np.random.uniform(size=(samples.shape[0], 1))])
-#     return u
-
-
-# No longer using
-# def unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas):
-#     """
-#     Given (N, D) samples from a mixed dirichlet distribution and their classes
-#     map the samples to a uniform distribution using the cdf of the marginal dirichlet distribution (beta)
-
-#     >>> np.random.seed(10)
-#     >>> samples = np.array([[0.1, 0.2, 0.7], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
-#     >>> classes = np.array([[True, True, True], [True, True, False]])
-#     >>> class_idxs = np.array([0, 0, 1, 1])
-#     >>> alphas = np.array([[1, 2, 3], [3, 3, 0]])
-#     >>> unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
-#     array([[0.40951   , 0.21582076, 0.00394827],
-#             [0.83193   , 0.57351104, 0.51219226],
-#             [0.00856   , 0.81262096, 0.16911084],
-#             [0.05792   , 0.61252607, 0.95339335]])
-#     """
-#     U = np.random.uniform(size=samples.shape)
-#     for i, c in enumerate(classes):
-#         row_idxs = np.where(class_idxs == i)[0]
-#         col_idxs = np.where(c)[0]
-#         entry_idxs = np.ix_(row_idxs, col_idxs)
-#         class_samples = samples[entry_idxs]
-#         alpha = alphas[i, c]
-#         U[entry_idxs] = unif_dirichlet_samples(class_samples, alpha)
-#     return U
-
 # Kate addition, one ensemble member at a time
 # Be careful to only use values that are non_zero
 def dir_to_unif(sample, class_idx, alphas):
@@ -142,7 +95,7 @@ def dir_to_unif(sample, class_idx, alphas):
     sample = sample[entry_idxs]
     
     # Build the beta pdfs
-    if np.ndim(alphas == 1):
+    if np.ndim(alphas) == 1:
         a = alphas[entry_idxs]
     else:
         a = alphas[class_idx][entry_idxs]
@@ -190,7 +143,7 @@ def get_class_log_posterior(pi, log_likelihoods):
     return np.log(pi) + log_likelihoods
 
  
-def get_class_transition_matrix(pi, posterior, costs=None):
+def get_class_transition_matrix(pi, posterior, costs):
     """
     Given the prior and posterior distributions, and a transition cost matrix,
     find the optimal transition matrix A that minimizes the cost of transitioning from the prior to the posterior distribution.
@@ -204,12 +157,11 @@ def get_class_transition_matrix(pi, posterior, costs=None):
            [ 0.25,  0.  ,  0.  ,  0.75]])
     """
     n = len(pi)
-    if not costs:
-        costs = np.ones(n * n)
-        costs[::n+1] = 0
-    # Equality constraints
-    # A @ x = b
-    # For A1 = p- and 1^T A = p+, we reshape A as a vector and construct the matrix
+    
+    # First check if the weights are the same- if so just make A the identity, no need for optimization
+    if np.linalg.norm(pi-posterior) < 1e-12:
+        return np.eye(n)
+
     A_eq = np.zeros((2 * n, n * n))
     for i in range(n):
         A_eq[i, i*n:(i+1)*n] = 1   # Constraints for A*1 = 1
@@ -218,7 +170,7 @@ def get_class_transition_matrix(pi, posterior, costs=None):
     # Bounds for each variable in A to be between 0 and 1
     bounds = [(0, 1) for _ in range(n * n)]
     # Solve the linear programming problem
-    result = linprog(costs, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs-ds', options = {'presolve': True, 'autoscale': True})
+    result = linprog(np.ndarray.flatten(costs), A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs-ds', options = {'presolve': True})
     # Check if the optimization was successful
     if result.success:
         # Reshape the result back into a matrix form
@@ -229,10 +181,9 @@ def get_class_transition_matrix(pi, posterior, costs=None):
         return A_solution
     else:
         print("Optimization failed:", result.message)
-        print("norm(pi-posterior): ", np.linalg.norm(pi-posterior))
-        return np.eye(n)
+        return np.tile(posterior, (n,1))
         
-        
+# No longer using     
 def get_post_class_idxs(class_idxs, transition_matrix):
     """
     Apply a transition matrix to the class indices to get the posterior class indices
@@ -291,14 +242,14 @@ def invert_mixed_unifs(post_class_idxs, classes, alphas, uniforms, obs=None):
     return X
 
 
-def get_post_class_idxs_pipeline(x0, classes, class_idxs, alphas, pi):
+def get_post_class_idxs_pipeline(x0, classes, class_idx, alphas, pi):
     """
     Given the prior and the x0, get the posterior class indices
 
     >>> np.random.seed(1)
-    >>> x0 = 0.5
+    >>> x0 = np.array([0.5, 0.45])
     >>> classes = np.array([[False, True, True], [True, True, False], [True, True, True]])
-    >>> class_idxs = np.array([0, 0, 0, 1, 1, 1])
+    >>> class_idx = 1
     >>> alphas = np.array([[0, 1, 2], [3, 4, 0], [1, 2, 3]])
     >>> pi = np.array([0.3, 0.3, 0.4])
     >>> get_post_class_idxs_pipeline(x0, classes, class_idxs, alphas, pi)
@@ -316,34 +267,18 @@ def get_post_class_idxs_pipeline(x0, classes, class_idxs, alphas, pi):
     lp -= lp.max()
     post = np.exp(lp) / np.exp(lp).sum()
     
-    A = get_class_transition_matrix(pi_x0, post)
-    post_class_idxs = get_post_class_idxs(class_idxs, A)
-    return post_class_idxs
+    # Implement the hamming distance given we start in class = class_idx
+    n = classes.shape[0]
+    costs = np.zeros((n,n))
+    i = class_idx
+    for j in range(n):
+        costs[i,j] = scipy.spatial.distance.hamming(classes[i,:],classes[j,:])    
+
+    A = get_class_transition_matrix(pi_x0, post, costs)
+    post_class_idx = np.random.choice(len(A), p=A[class_idx])
+    return post_class_idx
 
 
-# def transport_pipeline(samples, x0):
-#     """
-#     Empirical Bayes transport pipeline
-    
-#     >>> np.random.seed(1)
-#     >>> samples = np.array([[0.4, 0.3, 0.3], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
-#     >>> x0 = 0.25
-#     >>> transport_pipeline(samples, x0)
-#     array([[0.25      , 0.75      , 0.        ],
-#             [0.25      , 0.32142857, 0.42857143],
-#             [0.25      , 0.75      , 0.        ],
-#             [0.25      , 0.75      , 0.        ]])
-#     """
-#     classes, class_idxs, alphas, pi = est_mixed_dirichlet(samples)
-#     U = unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
-#     X = np.zeros_like(samples)
-#     post_class_idxs = np.zeros_like(class_idxs)
-#     for n in range(samples.shape[0]):  # each ensemble member one at a time
-#         post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
-#         X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U[n,:], x0[n,1])
-#     return X
-
-# Kate version
 def transport_pipeline(samples, x0):
     """
     Empirical Bayes transport pipeline
@@ -357,48 +292,25 @@ def transport_pipeline(samples, x0):
             [0.25      , 0.75      , 0.        ],
             [0.25      , 0.75      , 0.        ]])
     """
-    print("Running new version")
     classes, class_idxs, alphas, pi = est_mixed_dirichlet(samples)
-    #U = unif_dirichlet_mixed_samples(samples, classes, class_idxs, alphas)
     X = np.zeros_like(samples)
     post_class_idxs = np.zeros_like(class_idxs)
+    counts = 0                                                  # count the number of ens mems that change class
+    scale_factor = np.full(samples.shape[0], np.nan)
     for n in range(samples.shape[0]):  # each ensemble member one at a time
         post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
         # Check if the ensemble member changes class
         if post_class_idxs[n] == class_idxs[n]:                         # Scale
             X[n, 0] = x0[n,1]
-            X[n,1:] = (1-x0[n,1])/(1-x0[n,0])*samples[n,1:]
+            scale_factor[n] = get_scale_factor(x0[n,0], x0[n,1])
+            X[n,1:] = scale_factor[n]*samples[n,1:]
         else:
-            print("An ensemble member changed class")
+            counts = counts + 1
             U_new = dir_to_unif(samples[n], class_idxs[n], alphas)                                                           # Class transport
             X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U_new, x0[n,1])
+    print(str(counts) + " ensemble members changed class")
     return X
 
 
-    """
-    Empirical Bayes transport pipeline
-    
-    >>> np.random.seed(1)
-    >>> samples = np.array([[0.4, 0.3, 0.3], [0.3, 0.3, 0.4], [0.1, 0.9, 0.0], [0.2, 0.8, 0.0]])
-    >>> x0 = 0.25
-    >>> transport_pipeline(samples, x0)
-    array([[0.25      , 0.75      , 0.        ],
-            [0.25      , 0.32142857, 0.42857143],
-            [0.25      , 0.75      , 0.        ],
-            [0.25      , 0.75      , 0.        ]])
-    """
-    classes, class_idxs, alphas, pi = est_mixed_dirichlet(samples)
-    X = np.zeros_like(samples)
-    post_class_idxs = np.zeros_like(class_idxs)
-    for n in range(samples.shape[0]):  # each ensemble member one at a time
-        post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
-        # Check if the ensemble member changes class
-        if post_class_idxs[n] == class_idxs[n]:                         # Scale
-            X[n, 0] = x0[n,1]
-            X[n,1:] = (1-x0[n,1])/(1-x0[n,0])*samples[n,1:]
-        else:
-            U = unif_dirichlet_mixed_samples(samples[n], classes[n], class_idxs[n], alphas)                                                           # Class transport
-            X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U[n,:], x0[n,1])
-    return X
 
 
