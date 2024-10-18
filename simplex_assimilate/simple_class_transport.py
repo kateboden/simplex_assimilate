@@ -8,6 +8,7 @@ from simplex_assimilate.utils.quantize import quantize
 
 
 DEFAULT_ALPHA = 1e11
+#RNG = np.random.default_rng(seed = 0)
 
 # This function is used to see if class members are different, if there is only one class member then diff = 0
 def diff(class_samples):
@@ -182,20 +183,7 @@ def get_class_transition_matrix(pi, posterior, costs):
     else:
         print("Optimization failed:", result.message)
         return np.tile(posterior, (n,1))
-        
-# No longer using     
-def get_post_class_idxs(class_idxs, transition_matrix):
-    """
-    Apply a transition matrix to the class indices to get the posterior class indices
-    >>> np.random.seed(1)
-    >>> class_idxs = np.array([1, 1, 1, 2, 2, 2, 3, 3, 3])
-    >>> transition_matrix = np.array([[0.25,0.25,0.25,0.25],[-0.,0.,1.,0.],[0.,0.,1.,0.],[0.25,0.,0.,0.75]])
-    >>> get_post_class_idxs(class_idxs, transition_matrix)
-    array([2, 2, 2, 2, 2, 2, 0, 3, 3])
-    """
-    post_class_idxs = np.random.choice(len(transition_matrix), p=transition_matrix[class_idxs])
-    return post_class_idxs
-    
+            
     
 def invert_unifs(alpha, uniforms, obs=None):
     """
@@ -242,7 +230,7 @@ def invert_mixed_unifs(post_class_idxs, classes, alphas, uniforms, obs=None):
     return X
 
 
-def get_post_class_idxs_pipeline(x0, classes, class_idx, alphas, pi):
+def get_post_class_idxs_pipeline(x0, classes, class_idx, alphas, pi, rng):
     """
     Given the prior and the x0, get the posterior class indices
 
@@ -275,11 +263,11 @@ def get_post_class_idxs_pipeline(x0, classes, class_idx, alphas, pi):
         costs[i,j] = scipy.spatial.distance.hamming(classes[i,:],classes[j,:])    
 
     A = get_class_transition_matrix(pi_x0, post, costs)
-    post_class_idx = np.random.choice(len(A), p=A[class_idx])
+    post_class_idx = rng.choice(len(A), p=A[class_idx])
     return post_class_idx
 
 
-def transport_pipeline(samples, x0):
+def transport_pipeline(samples, x0,rng):
     """
     Empirical Bayes transport pipeline
     
@@ -298,7 +286,7 @@ def transport_pipeline(samples, x0):
     counts = 0                                                  # count the number of ens mems that change class
     scale_factor = np.full(samples.shape[0], np.nan)
     for n in range(samples.shape[0]):  # each ensemble member one at a time
-        post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi)
+        post_class_idxs[n] = get_post_class_idxs_pipeline(x0[n], classes, class_idxs[n], alphas, pi,rng)
         # Check if the ensemble member changes class
         if post_class_idxs[n] == class_idxs[n]:                         # Scale
             X[n, 0] = x0[n,1]

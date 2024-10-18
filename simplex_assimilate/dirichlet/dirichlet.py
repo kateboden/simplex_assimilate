@@ -291,7 +291,7 @@ def _meanprecision(D, tol=1e-9, maxiter=None):
     )
 
 
-def _fit_s(D, a0, logp, tol=1e-9, maxiter=200000):
+def _fit_s(D, a0, logp, tol=1e-5, maxiter=200000):
     """Update parameters via MLE of precision with fixed mean
 
     Parameters
