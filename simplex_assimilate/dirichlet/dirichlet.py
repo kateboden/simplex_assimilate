@@ -278,6 +278,9 @@ def _meanprecision(D, tol=1e-9, maxiter=None):
         maxiter = MAXINT
     for i in range(maxiter):
         a1 = _fit_s(D, a0, logp, tol=tol)
+        # New code by Kate
+        if np.array_equal(a1,a0):
+            return a0
         s1 = sum(a1)
         a1 = _fit_m(D, a1, logp, tol=tol)
         m = a1 / s1
@@ -291,7 +294,7 @@ def _meanprecision(D, tol=1e-9, maxiter=None):
     )
 
 
-def _fit_s(D, a0, logp, tol=1e-5, maxiter=200000):
+def _fit_s(D, a0, logp, tol=1e-5, maxiter=100000):
     """Update parameters via MLE of precision with fixed mean
 
     Parameters
@@ -336,12 +339,17 @@ def _fit_s(D, a0, logp, tol=1e-5, maxiter=200000):
         if abs(s1 - s0) < tol*s0:
             return a
             #print("s is " + str(s1) + " iter number " + str(i))
+    
+    # Kate's new code to deal with the case when max iterations are reached- then use the MoM estimator
+    if i == (maxiter-1):
+        print("MLE failed to converge, using MoM estimate for alpha")
+        return a0
             
-
+    
     raise NotConvergingError(f"Failed to converge (_fit_s) after {maxiter} iterations, " f"s is {s1}", f"class samples are {D}")
 
 
-def _fit_m(D, a0, logp, tol=1e-9, maxiter= 1000):
+def _fit_m(D, a0, logp, tol=1e-5, maxiter= 1000):
     """Update parameters via MLE of mean with fixed precision s
 
     Parameters
