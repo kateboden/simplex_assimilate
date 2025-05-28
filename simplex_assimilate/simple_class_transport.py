@@ -80,26 +80,23 @@ def est_mixed_dirichlet(samples):
     return classes, class_idxs, alphas, pi
 
 
-# Kate addition, one ensemble member at a time
-# Be careful to only use values that are non_zero
-def dir_to_unif(sample, class_idx, alphas):
+# Map one ensemble member at a time
+# Be careful to only use values that are non zero
+def dir_to_unif(sample,alphas,rng):
     """
     Given a single ensemble member, its class, and the alphas
     map the sample to a uniform distribution using the cdf of the marginal dirichlet distribution (beta)
 
     """
     # Initialize random uniform sample
-    U = np.random.uniform(size=sample.shape)
+    U = rng.uniform(size = sample.shape)
     
     # Find location where the original sample is nonzero
     entry_idxs = np.where(sample)
     sample = sample[entry_idxs]
     
-    # Build the beta pdfs
-    if np.ndim(alphas) == 1:
-        a = alphas[entry_idxs]
-    else:
-        a = alphas[class_idx][entry_idxs]
+    # Build the pdfs
+    a = alphas[entry_idxs]
     b = a.sum() - a.cumsum()                       
     betas = scipy.stats.beta(a[:-1], b[:-1])
     remaining_mass = 1 - sample.cumsum()           
@@ -107,7 +104,7 @@ def dir_to_unif(sample, class_idx, alphas):
     # Apply the beta cdf
     u = betas.cdf(rel_sample[:-1])
     # add a uniform at the end
-    u = np.append(u, np.random.uniform(size=1))
+    u = np.append(u, rng.uniform(size=1))
     # Update the uniform sample
     U[entry_idxs] = u
     return U
@@ -198,7 +195,7 @@ def invert_unifs(alpha, uniforms, obs=None):
     X = np.zeros_like(uniforms, dtype=np.float64)
     if obs:
         X[0] = obs
-    for i in range(1 if obs else 0, len(alpha) - 1):  # cutting the ribbon 
+    for i in (range(1 if obs else 0, len(alpha) - 1)):  # cutting the ribbon 
         a = alpha[i]
         b = alpha[i:].sum() - alpha[i]
         beta = scipy.stats.beta(a, b)
@@ -244,10 +241,10 @@ def get_post_class_idxs_pipeline(x0, classes, class_idx, alphas, pi, rng):
     array([1, 1, 1, 1, 1, 1])
     """
     # Conditioning the class weights on the prior x_0 (open water fraction)
-    ll = get_class_log_likelihood(x0[0], classes, alphas)
-    lp = get_class_log_posterior(pi, ll)
+    ll = get_class_log_likelihood(x0[0], classes, alphas)                   # compute beta pdf at x0
+    lp = get_class_log_posterior(pi, ll)                                    # multiply by previous weight pi to get updated weight
     lp -= lp.max()
-    pi_x0 = np.exp(lp) / np.exp(lp).sum()
+    pi_x0 = np.exp(lp) / np.exp(lp).sum()                                   # normalize
     
     # Conditioning the class weights on the posterior x_0 (open water fraction)
     ll = get_class_log_likelihood(x0[1], classes, alphas)
@@ -294,7 +291,7 @@ def transport_pipeline(samples, x0,rng):
             X[n,1:] = scale_factor[n]*samples[n,1:]
         else:
             counts = counts + 1
-            U_new = dir_to_unif(samples[n], class_idxs[n], alphas)                                                           # Class transport
+            U_new = dir_to_unif(samples[n], alphas[class_idxs[n]], rng)                                                           # Class transport
             X[n,:] = invert_mixed_unifs(post_class_idxs[n], classes, alphas, U_new, x0[n,1])
     print(str(counts) + " ensemble members changed class")
     return X
